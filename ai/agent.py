@@ -24,19 +24,37 @@ from ai.strategy_fsm import FSM
 from ai.tactics import (StuckMonitor, CaptureMonitor, CarryController,
                         DeadlockBreaker, OrientToBall, StrikeSequence,
                         DirectStriker, possessor, effective_aim, ball_against_wall, ShadowDefender)
-from sim.sim_backend import SimSensors, SimActuators
+from sim.io_interface import Sensors, Actuators
 from sim.geometry import dist, wrap_angle
 
 
 class Agent:
-    def __init__(self, match, robot_index: int = 0,
-                 opponent_controller=None) -> None:
+    def __init__(self, sensors: Sensors, actuators: Actuators,
+                 robot_index: int = 0, *, truth=None) -> None:
+        """The AI, given a way to sense and a way to act. Nothing else.
+
+        `sensors` and `actuators` are the HAL interfaces from
+        `sim/io_interface.py`. This class never learns where they came from,
+        which is the whole portability claim: swapping the simulator for a
+        real camera, a real radio and a real robot means passing a different
+        pair of objects here and changing nothing below.
+
+        Build the simulator-backed pair with `Match.hal()`.
+
+        `truth` is a DEBUG-ONLY handle on ground truth, used to score belief
+        against reality in `error_summary()`. It defaults to None and the AI
+        is fully functional without it -- which is the point. On real hardware
+        there is no ground truth to pass, so if any decision path ever starts
+        depending on it, that path cannot ship, and the omission will surface
+        here as an AttributeError rather than as a robot that works in
+        simulation and fails in the arena.
+        """
         self.index = robot_index
         self.opp_index = 1 - robot_index
         self.attack_dir = 1.0 if robot_index == 0 else -1.0
 
-        self.sensors = SimSensors(match.world, opponent_controller)
-        self.actuators = SimActuators(match, robot_index)
+        self.sensors = sensors
+        self.actuators = actuators
 
         self.estimator = Estimator(robot_index)
         self.fsm = FSM(robot_index)
@@ -60,7 +78,7 @@ class Agent:
         self._wheels = (0.0, 0.0)
 
         # Debug only. Never read by any decision path.
-        self._world_for_debug = match.world
+        self._world_for_debug = truth
         self._err_accum = {"ball": 0.0, "self": 0.0, "opp": 0.0}
         self._err_n = 0
         self._err_samples = {"ball": [], "self": [], "opp": []}
@@ -86,6 +104,8 @@ class Agent:
         self.sensors.step(dt)
 
         w = self._world_for_debug
+        if w is None:
+            return                  # no ground truth available: real hardware
         self._truth_log.append((
             w.t, w.ball.pos,
             w.robots[self.index].pos, w.robots[self.opp_index].pos,

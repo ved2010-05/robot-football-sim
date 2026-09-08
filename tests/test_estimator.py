@@ -82,7 +82,7 @@ def run_match(seconds, agent_cls=None):
 
     human = HumanController()
     m = Match(None, human)
-    agent = Agent(m, robot_index=0, opponent_controller=human)
+    agent = Agent(*m.hal(0, human), robot_index=0, truth=m.world)
     m.controllers[0] = agent
     # Give the opponent something to do so the world is not static.
     opp = TruthChaser(m.world, 1)
@@ -111,7 +111,7 @@ def _ball_error_split(m, agent):
 
     human = HumanController()
     m2 = Match(None, human, seed=4242)
-    a2 = Agent(m2, robot_index=0, opponent_controller=human)
+    a2 = Agent(*m2.hal(0, human), robot_index=0, truth=m2.world)
     m2.controllers[0] = a2
     m2.controllers[1] = TruthChaser(m2.world, 1)
 

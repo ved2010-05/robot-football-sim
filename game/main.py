@@ -90,7 +90,7 @@ def build(opponent: str):
     if opponent == "ai":
         from ai.agent import Agent
         match = Match(None, human)
-        agent = Agent(match, robot_index=0, opponent_controller=human)
+        agent = Agent(*match.hal(0, human), robot_index=0, truth=match.world)
         match.controllers[0] = agent
         return match, human, agent
 

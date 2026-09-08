@@ -38,7 +38,8 @@ import math
 
 import config
 from sim.geometry import wrap_angle, clamp
-from game.input import max_forward_speed, max_yaw_rate, twist_to_wheels_clamped
+from sim.kinematics import (max_forward_speed, max_yaw_rate,
+                            twist_to_wheels_clamped)
 
 
 # How closely it must be pointing at its target before it will drive.

@@ -140,7 +140,7 @@ def play(seed: int, seconds: float, reaction: float):
 
     m = Match(None, None, seed=seed)
     bot = HumanLike(m.world, 1, reaction=reaction, seed=seed)
-    agent = Agent(m, robot_index=0, opponent_controller=bot)
+    agent = Agent(*m.hal(0, bot), robot_index=0, truth=m.world)
     m.controllers[0] = agent
     m.controllers[1] = bot
 

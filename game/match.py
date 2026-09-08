@@ -94,6 +94,19 @@ class Match:
 
         self.control_tick = bus.Sampler(config.CONTROL_HZ)
 
+
+    def hal(self, robot_index: int = 0, opponent_controller=None):
+        """Build the simulator-backed (Sensors, Actuators) pair for a robot.
+
+        This is the seam. `Agent` is handed these two objects and never learns
+        what implements them, so the same AI drives a real robot by
+        constructing a different pair here and changing nothing in `ai/`.
+        """
+        from sim.sim_backend import SimSensors, SimActuators
+        return (SimSensors(self.world, opponent_controller),
+                SimActuators(self, robot_index))
+
+
     # -- rules -------------------------------------------------------------
 
     def _update_stuck(self, dt: float) -> None:

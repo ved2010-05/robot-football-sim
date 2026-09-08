@@ -158,7 +158,7 @@ def play(seed: int, seconds: float, opponent: str, ai: str = "agent") -> dict:
     # way to say whether a number like "14% of the match in the attacking
     # third" is good or terrible.
     if ai == "agent":
-        me = Agent(m, robot_index=0, opponent_controller=bot)
+        me = Agent(*m.hal(0, bot), robot_index=0, truth=m.world)
     else:
         me = _make_opponent(ai, m.world, 0, seed)
     m.controllers[0] = me

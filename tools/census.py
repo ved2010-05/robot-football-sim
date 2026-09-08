@@ -30,7 +30,7 @@ def census(seed: int, seconds: float, opponent: str) -> collections.Counter:
     config.MATCH_DURATION_S = seconds
     m = Match(None, None, seed=seed)
     bot = _make_opponent(opponent, m.world, 1, seed)
-    agent = Agent(m, robot_index=0, opponent_controller=bot)
+    agent = Agent(*m.hal(0, bot), robot_index=0, truth=m.world)
     m.controllers[0] = agent
     m.controllers[1] = bot
     m.clock = seconds

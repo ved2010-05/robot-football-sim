@@ -132,7 +132,7 @@ def do_record(path: str) -> int:
     seed = config.RANDOM_SEED
     human = InputRecorder(HumanController())
     m = Match(None, human, seed=seed)
-    agent = Agent(m, robot_index=0, opponent_controller=human)
+    agent = Agent(*m.hal(0, human), robot_index=0, truth=m.world)
     m.controllers[0] = agent
 
     Renderer(m, human, agent, title="Recording -- Esc to stop").run()
@@ -152,7 +152,7 @@ def _build_playback(path: str):
     d = load(path)
     bot = PlaybackController(d["commands"])
     m = Match(None, bot, seed=d["seed"])
-    agent = Agent(m, robot_index=0, opponent_controller=bot)
+    agent = Agent(*m.hal(0, bot), robot_index=0, truth=m.world)
     m.controllers[0] = agent
     return d, m, agent, bot
 

@@ -19,7 +19,8 @@ from __future__ import annotations
 import math
 
 import config
-from game.input import max_forward_speed, max_yaw_rate, twist_to_wheels_clamped
+from sim.kinematics import (max_forward_speed, max_yaw_rate,
+                            twist_to_wheels_clamped)
 from sim.geometry import wrap_angle, clamp
 
 

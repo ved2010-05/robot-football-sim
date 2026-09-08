@@ -48,7 +48,7 @@ def play(seed: int, seconds: float, quiet: bool = True):
     config.MATCH_DURATION_S = seconds
     human = ginput.HumanController()
     m = gm.Match(None, human, seed=seed)
-    agent = aagent.Agent(m, robot_index=0, opponent_controller=human)
+    agent = aagent.Agent(*m.hal(0, human), robot_index=0, truth=m.world)
     m.controllers[0] = agent
     m.controllers[1] = gmain.TruthChaser(m.world, 1)
 

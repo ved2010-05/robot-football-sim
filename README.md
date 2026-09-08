@@ -210,6 +210,29 @@ Three rules, each learned by getting it wrong:
   wall clock alone and 23 s with six sims running. Past three jobs,
   parallelism runs *slower than serial*.
 
+## Scope, and what this is not
+
+- **Not a finished AI.** The status table above is the current state, including
+  a regression that has not been fixed. Numbers here are 8-12 match samples
+  with standard errors around 0.5-0.8 goals; treat any single cell as
+  indicative, not settled.
+- **Not a physics engine.** The simulation models what this specific robot
+  needs — skid-steer slip, a passive pocket, one ball, flat ground. It has no
+  general collision solver and no aspiration to be one.
+- **Not trained on anyone.** There is no learning of any kind in this
+  repository: no player profile, nothing persisted between matches, nothing
+  fitted, no in-match adaptation. That is a design constraint, not an
+  unfinished feature.
+- **Not yet validated against hardware.** Every delay and noise source is
+  modelled from datasheets and first principles, and the correction layer is
+  tested against the simulator's own ground truth. Whether the numbers match a
+  real arena is an open question until the robot exists.
+
+## Licence
+
+MIT — see [LICENSE](LICENSE). Provided as is, with no warranty and no fitness
+for any particular purpose.
+
 ## Things worth knowing
 
 - **The zero-noise test is the one that matters.** `tests/test_estimator.py`

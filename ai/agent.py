@@ -23,7 +23,8 @@ from ai.estimator import Estimator
 from ai.strategy_fsm import FSM
 from ai.tactics import (StuckMonitor, CaptureMonitor, CarryController,
                         DeadlockBreaker, OrientToBall, StrikeSequence,
-                        DirectStriker, possessor, effective_aim, ball_against_wall, ShadowDefender)
+                        DirectStriker, possessor, effective_aim, ball_against_wall, ShadowDefender,
+                        on_chamfer)
 from sim.io_interface import Sensors, Actuators
 from sim.geometry import dist, wrap_angle
 
@@ -74,6 +75,10 @@ class Agent:
             except ImportError:
                 self.planner = None
 
+        self._claimed = False
+        self._still_t = 0.0
+        self._still_anchor = (9e9, 9e9)
+        self._last_ball = None
         self._cmd = (0.0, 0.0)          # last commanded (v, omega)
         self._wheels = (0.0, 0.0)
 
@@ -163,7 +168,8 @@ class Agent:
         # of view the target it picked is still the best available, so it
         # keeps commanding full throttle into whatever is blocking it. Only a
         # comparison of commanded against achieved speed reveals the jam.
-        if self.stuck.update(dt, me.pos, me.theta, me.v, self._cmd[0]):
+        if self.stuck.update(dt, me.pos, me.theta, me.v, self._cmd[0],
+                             self._cmd[1]):
             v, omega = self.stuck.command()
             self._cmd = (v, omega)
             self._wheels = controller.to_wheels(v, omega)
@@ -184,6 +190,16 @@ class Agent:
                                {"breaks": self.deadlock.breaks})
             return self._cmd
 
+        # A BALL THAT JUMPS HAS BEEN PUT BACK, not struck. For a few frames
+        # after a restart the filter still holds the old position -- in the
+        # goal mouth, after a goal -- and that was long enough to start a
+        # committed 0.8 s goal-mouth sweep at the kickoff. The opponent took
+        # the restart unopposed and scored inside 2 s.
+        if (self._last_ball is not None
+                and dist(belief.ball_pos, self._last_ball) > 0.5):
+            self.clear()
+        self._last_ball = belief.ball_pos
+
         holding = possessor(belief) == self.index
 
         # Who has a claim on the ball. Computed HERE, above the reflexes,
@@ -196,6 +212,24 @@ class Agent:
                 < -config.HALF_LENGTH_M * config.STRIKE_THREATENED_FRAC)
         margin = (config.STRIKE_DEEP_MARGIN_M if deep
                   else config.STRIKE_CLAIM_MARGIN_M)
+        # IN FRONT OF OUR OWN GOAL, WAITING IS CONCEDING.
+        #
+        # The deep margin asks us to be clearly nearer before contesting, and
+        # the shadow line is right to hang back in midfield. But three of the
+        # four goals in the worst traced match came from a ball that stopped
+        # within 0.4 m of our goal line, with our robot beside it, holding
+        # position for a second and more while the opponent turned, lined up
+        # and tapped it in. Near the mouth there is no line left to hold.
+        own_goal = (-self.attack_dir * config.HALF_LENGTH_M, 0.0)
+        if dist(belief.ball_pos, own_goal) < config.DANGER_RADIUS_M:
+            margin = max(margin, config.DANGER_CLAIM_MARGIN_M)
+        # HYSTERESIS. Level with the opponent, the claim flipped every second
+        # or so, and each flip swapped the striker for the shadow line and
+        # back -- two control laws pulling opposite ways, neither running long
+        # enough to arrive. Once we have gone for the ball, keep going unless
+        # the opponent is clearly nearer.
+        if self._claimed:
+            margin += config.CLAIM_HYSTERESIS_M
         ours = my_d < opp_d + margin
 
         # A PINNED BALL IS ALWAYS WORTH CLAIMING.
@@ -212,8 +246,27 @@ class Agent:
         # So the ordinary claim margin -- which is about contesting a loose
         # ball fairly -- does not apply to a ball that is stuck. Take it
         # unless the opponent is clearly better placed.
-        if ball_against_wall(belief.ball_pos) != (0.0, 0.0):
+        if (ball_against_wall(belief.ball_pos) != (0.0, 0.0)
+                or on_chamfer(belief.ball_pos) is not None):
             ours = ours or (my_d < opp_d + config.PINNED_CLAIM_MARGIN_M)
+        # A BALL NOBODY IS MOVING IS NOBODY'S. Nearer is not the same as
+        # taking it: in the traces the opponent stopped 0.25 m from a ball on
+        # our side wall, facing the wrong way, and we held the shadow line
+        # opposite it for 30 s because it was nearer. Stillness is read off
+        # the ball's own estimated speed, now -- nothing about the opponent is
+        # remembered or learned.
+        # Stillness from POSITION over a window, not the velocity estimate:
+        # the filter's velocity for a resting ball is noise of order 0.1 m/s,
+        # while its position is good to millimetres.
+        bp = belief.ball_pos
+        if dist(bp, self._still_anchor) > config.STILL_RADIUS_M:
+            self._still_anchor = bp
+            self._still_t = 0.0
+        else:
+            self._still_t += dt
+        if config.STILL_CLAIM_S > 0.0 and self._still_t > config.STILL_CLAIM_S:
+            ours = True
+        self._claimed = ours
 
         # THE ATTACKING RUN OWNS ITS OWN TICKS.
         #
@@ -236,7 +289,8 @@ class Agent:
                 and config.DIRECT_OWNS_APPROACH and ours):
             aim = self._attack_aim(belief)
             v, omega, ph = self.direct.command(
-                dt, me, belief.ball_pos, aim, belief.ball_vel)
+                dt, me, belief.ball_pos, aim, belief.ball_vel,
+                opp_pos=opp_b.pos if opp_b.valid else None)
             self._cmd = (v, omega)
             self._wheels = controller.to_wheels(v, omega)
             self.actuators.set_wheels(*self._wheels)
@@ -340,7 +394,8 @@ class Agent:
             aim = self._attack_aim(belief)
             if config.ATTACK_MODE == "direct":
                 v, omega, ph = self.direct.command(
-                    dt, me, belief.ball_pos, aim, belief.ball_vel)
+                    dt, me, belief.ball_pos, aim, belief.ball_vel,
+                    opp_pos=opp_b.pos if opp_b.valid else None)
             else:
                 v, omega, ph = self.strike.command(dt, me, belief.ball_pos, aim)
             self._cmd = (v, omega)
@@ -404,8 +459,21 @@ class Agent:
         return self._wheels
 
     def clear(self) -> None:
+        """Called on a goal. Everything in flight belongs to the old ball.
+
+        Clearing only the last command left the tactics mid-manoeuvre: after
+        scoring from a wall sweep, the striker carried its committed sweep
+        heading through the kickoff and "swept" an imaginary wall at the
+        centre spot while the opponent took the restart.
+        """
         self._cmd = (0.0, 0.0)
         self._wheels = (0.0, 0.0)
+        self._claimed = False
+        self._still_t = 0.0
+        self._still_anchor = (9e9, 9e9)
+        for t in (self.direct, self.strike, self.shadow, self.orient,
+                  self.capture, self.carry, self.deadlock, self.stuck):
+            t.reset()
 
     # -- diagnostics -------------------------------------------------------
 

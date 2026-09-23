@@ -134,6 +134,70 @@ class HumanLike:
         pass
 
 
+class RCHuman(HumanLike):
+    """A human on an RC transmitter (FlySky-style analog sticks).
+
+    Same decision rule as HumanLike, but the timing of a person steering
+    continuously rather than issuing discrete commands: they re-decide every
+    RC frame (~20 ms), but from what they SAW `delay` seconds ago, and their
+    thumbs move the sticks at a finite rate. Nothing is fitted to anyone.
+    """
+
+    def __init__(self, world, index: int, delay: float = 0.20,
+                 frame: float = 0.02, stick_tau: float = 0.08,
+                 sloppiness: float = 0.08, seed: int = 0) -> None:
+        super().__init__(world, index, reaction=frame,
+                         sloppiness=sloppiness, seed=seed)
+        self.delay = delay
+        self.stick_tau = stick_tau
+        self._t = 0.0
+        self._seen = []          # (t, me_pos, me_theta, ball_pos)
+        self._out = (0.0, 0.0)
+
+    def _snapshot(self):
+        me = self.world.robots[self.index]
+        return (self._t, me.chassis.pos, me.chassis.theta,
+                self.world.ball.pos)
+
+    def update(self, dt: float):
+        self._t += dt
+        self._seen.append(self._snapshot())
+        while len(self._seen) > 2 and self._seen[1][0] <= self._t - self.delay:
+            self._seen.pop(0)
+        self._since += dt
+        if self._since >= self.reaction:
+            self._since = 0.0
+            # Decide on the stale picture: temporarily show the rule the
+            # world as it was `delay` ago.
+            _, pos, th, bpos = self._seen[0]
+            me = self.world.robots[self.index]
+            ball = self.world.ball
+            real = (me.chassis.pos, me.chassis.theta, ball.pos)
+            me.chassis.pos, me.chassis.theta, ball.pos = pos, th, bpos
+            try:
+                self._twist = self._decide()
+            finally:
+                me.chassis.pos, me.chassis.theta, ball.pos = real
+        k = min(1.0, dt / self.stick_tau)
+        self._out = (self._out[0] + (self._twist[0] - self._out[0]) * k,
+                     self._out[1] + (self._twist[1] - self._out[1]) * k)
+        return self._out
+
+    def wheel_command(self):
+        from game.input import twist_to_wheels_clamped
+        return twist_to_wheels_clamped(*self._out)
+
+    def intent(self):
+        if not config.USE_INTENT_CHANNEL:
+            return None
+        return self._out
+
+    def clear(self):
+        super().clear()
+        self._out = (0.0, 0.0)
+        self._seen = []
+
+
 def play(seed: int, seconds: float, reaction: float):
     from game.match import Match
     from ai.agent import Agent

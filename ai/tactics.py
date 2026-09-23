@@ -109,6 +109,117 @@ def effective_aim(ball, goal, attack_dir: float):
     return goal, False
 
 
+def _nearest_wall_normal(p) -> tuple[float, float]:
+    """Inward normal of the wall closest to point p."""
+    hx, hy = config.HALF_LENGTH_M, config.HALF_WIDTH_M
+    gaps = ((hx - p[0], (-1.0, 0.0)), (p[0] + hx, (1.0, 0.0)),
+            (hy - p[1], (0.0, -1.0)), (p[1] + hy, (0.0, 1.0)))
+    return min(gaps)[1]
+
+
+def route_around(me_pos, ball, target, clearance: float | None = None):
+    """The target, or a via-point beside the ball if the ball is in the way.
+
+    Every approach here is "drive straight at the point behind the ball". From
+    the WRONG side of the ball that straight line runs through it, so the
+    robot arrives by shoving the ball the opposite way -- toward its own goal,
+    when the point it wanted was goal-side of the ball. Go round instead: aim
+    for a point level with the ball, off to whichever side we are already on.
+    """
+    if clearance is None:
+        clearance = config.ROUTE_CLEARANCE_M
+    dx, dy = target[0] - me_pos[0], target[1] - me_pos[1]
+    L2 = dx * dx + dy * dy
+    if L2 < 1e-9:
+        return target
+    bx, by = ball[0] - me_pos[0], ball[1] - me_pos[1]
+    t = (bx * dx + by * dy) / L2
+    if t <= 0.0 or t >= 1.0:
+        return target
+    px, py = me_pos[0] + dx * t, me_pos[1] + dy * t
+    if math.hypot(ball[0] - px, ball[1] - py) >= clearance:
+        return target
+
+    ax, ay = target[0] - ball[0], target[1] - ball[1]
+    an = math.hypot(ax, ay)
+    if an < 1e-6:
+        return target
+    ax, ay = ax / an, ay / an
+    nx, ny = -ay, ax
+    rel = (me_pos[0] - ball[0]) * nx + (me_pos[1] - ball[1]) * ny
+    side = 1.0 if rel >= 0.0 else -1.0
+    # Level with the ball and slightly toward the target, so the next leg is
+    # a short straight run in behind it.
+    off = clearance * config.ROUTE_SIDE_MULT
+    for sd in (side, -side):
+        via = (ball[0] + nx * sd * off + ax * clearance * 0.5,
+               ball[1] + ny * sd * off + ay * clearance * 0.5)
+        clamped = reachable_point(via)
+        if math.hypot(clamped[0] - via[0], clamped[1] - via[1]) < off * 0.5:
+            return clamped
+    return target
+
+
+def avoid_robot(me_pos, target, opp_pos, clearance: float | None = None):
+    """The target, or a via-point round the other robot if it is in the way.
+
+    route_around() only knows about the ball. The other robot is a far bigger
+    obstacle, and with no referee reset it is the one that decides matches: a
+    human-shaped opponent parks nose-first on a ball against a wall, the free
+    side of the ball is on the far side of it, and a straight-line approach
+    ran into its body, jammed, escaped, and tried again for 115 seconds.
+    """
+    if clearance is None:
+        clearance = config.AVOID_CLEARANCE_M
+    # A target at the other robot is a target we must contest, not avoid.
+    if math.hypot(target[0] - opp_pos[0],
+                  target[1] - opp_pos[1]) < clearance * 0.9:
+        return target
+    return route_around(me_pos, opp_pos, target, clearance)
+
+
+def goalmouth_sweep(ball, attack_dir: float, me_pos=None):
+    """A ball in front of OUR goal, too close to the line to get behind.
+
+    The robot's centre cannot come within its circumradius of the end wall, so
+    any ball within about half a metre of our own goal line has no reachable
+    "behind" on the line to the opponent's goal. The striker then drove at a
+    point clamped to the edge of the pitch, level with the ball, and never
+    once satisfied its own line-up test: in the traces, 1.5 s circling a
+    stationary ball in our own goal mouth until the opponent tapped it in.
+
+    What does exist is the goal line itself. Sweep the ball along it, out
+    through the nearer post -- exactly what wall_extraction() does for a ball
+    against our end wall outside the mouth.
+    """
+    hx = config.HALF_LENGTH_M
+    x_att = ball[0] * attack_dir
+    if x_att > -(hx - config.GOALMOUTH_DEPTH_M):
+        return None
+    if abs(ball[1]) > config.HALF_GOAL_M + config.GOALMOUTH_WIDEN_M:
+        return None
+
+    stand = (config.ROBOT_LENGTH_M / 2.0 + config.HORN_LENGTH_M * 0.5
+             + config.BALL_RADIUS_M)
+    best, best_cost = None, 1e9
+    for ty in (1.0, -1.0):
+        approach = reachable_point((ball[0], ball[1] - ty * stand))
+        aim = reachable_point((ball[0] + attack_dir * 0.25,
+                               ball[1] + ty * 1.2))
+        cost = 0.0
+        # Toward the centre of our own mouth is not a clearance, it is a pass
+        # across the face of the goal. Traced: chosen because its approach
+        # point was nearer, it ran the ball along the line and in.
+        if ball[1] * ty < 0.0 and abs(ball[1]) > 0.04:
+            continue
+        if me_pos is not None:
+            cost += math.hypot(approach[0] - me_pos[0],
+                               approach[1] - me_pos[1])
+        if cost < best_cost:
+            best, best_cost = (aim, approach, (0.0, ty)), cost
+    return best
+
+
 def robot_circumradius() -> float:
     """Worst-case distance from the robot centre to any part of it."""
     hl = config.ROBOT_LENGTH_M / 2.0
@@ -213,10 +324,11 @@ class StuckMonitor:
         self.escape_left = 0.0
         self.escape_turn = 1.0
         self.escapes = 0
-        self._trail: list[tuple[float, float, float]] = []
+        self.escape_dir = -1.0
+        self._trail: list[tuple[float, float, float, float]] = []
 
     def update(self, dt: float, pos, theta: float, speed: float,
-               commanded_v: float) -> bool:
+               commanded_v: float, commanded_w: float = 0.0) -> bool:
         """Returns True while an escape is in progress.
 
         Detection uses ACTUAL DISPLACEMENT, not the believed velocity.
@@ -226,7 +338,7 @@ class StuckMonitor:
         believes it is moving at full speed. Velocity is precisely the signal
         that lies in this situation. Position comes from vision and cannot.
         """
-        self._trail.append((pos[0], pos[1], dt))
+        self._trail.append((pos[0], pos[1], dt, theta))
         window = 0.0
         i = len(self._trail) - 1
         while i > 0 and window < config.STUCK_DETECT_S:
@@ -242,13 +354,33 @@ class StuckMonitor:
             return self.escape_left > 0.0
 
         moved = 0.0
-        if window >= config.STUCK_DETECT_S * 0.8 and len(self._trail) > 2:
-            x0, y0, _ = self._trail[0]
+        turned = 0.0
+        full = window >= config.STUCK_DETECT_S * 0.8 and len(self._trail) > 2
+        if full:
+            x0, y0, _, _ = self._trail[0]
             moved = math.hypot(pos[0] - x0, pos[1] - y0)
+            for a, b in zip(self._trail, self._trail[1:]):
+                turned += abs(wrap_angle(b[3] - a[3]))
 
         trying = abs(commanded_v) > 0.25
-        stalled = (window >= config.STUCK_DETECT_S * 0.8
-                   and moved < config.STUCK_MIN_TRAVEL_M)
+        stalled = full and moved < config.STUCK_MIN_TRAVEL_M
+
+        # A TURN CAN JAM TOO. Rotating on the spot beside a wall swings the
+        # horn tips into it, and the robot grinds there asking for full yaw
+        # and getting almost none. Watched in the goal traces: 1.4 s turning
+        # +135 to +150 degrees with the ball stationary in our goal mouth,
+        # until the opponent arrived and scored. The speed test above cannot
+        # see it, because a turn on the spot commands no forward speed at all.
+        if config.STUCK_DETECT_YAW:
+            from ai.controller import limits
+            _, w_max = limits()
+            spinning = (abs(commanded_w) > 0.5 * w_max
+                        and abs(commanded_v) < 0.25)
+            if (spinning and full
+                    and turned < math.radians(config.STUCK_MIN_TURN_DEG)):
+                trying = True
+                stalled = True
+
         if trying and stalled:
             self.jam_time += dt
         else:
@@ -264,13 +396,22 @@ class StuckMonitor:
             self.escape_turn = -1.0 if pos[1] > 0 else 1.0
             if abs(pos[0]) > config.HALF_LENGTH_M - 0.3:
                 self.escape_turn = -1.0 if pos[1] > 0 else 1.0
+            # Back away from the nearest wall, which is not always backwards.
+            # A robot whose TAIL is on the wall reverses into it and jams
+            # again the moment the escape ends.
+            self.escape_dir = -1.0
+            if config.STUCK_ESCAPE_AWAY_FROM_WALL:
+                nx, ny = _nearest_wall_normal(pos)
+                if math.cos(theta) * nx + math.sin(theta) * ny > 0.0:
+                    self.escape_dir = 1.0
             return True
         return False
 
     def command(self) -> tuple[float, float]:
         from ai.controller import limits
         v_max, w_max = limits()
-        return (-0.75 * v_max, self.escape_turn * 0.8 * w_max)
+        return (self.escape_dir * 0.75 * v_max,
+                self.escape_turn * 0.8 * w_max)
 
     def reset(self) -> None:
         self.jam_time = 0.0
@@ -672,21 +813,63 @@ class OrientToBall:
 
 
 def reachable_point(p):
-    """Pull a point inside the rectangle the robot's CENTRE can occupy."""
+    """Pull a point inside the region the robot's CENTRE can occupy."""
     margin = robot_circumradius() + 0.02
     hx = max(config.HALF_LENGTH_M - margin, 0.05)
     hy = max(config.HALF_WIDTH_M - margin, 0.05)
-    return (clamp(p[0], -hx, hx), clamp(p[1], -hy, hy))
+    x, y = clamp(p[0], -hx, hx), clamp(p[1], -hy, hy)
+    c = config.ARENA_CORNER_CHAMFER_M
+    if c > 0.0:
+        sx = 1.0 if x > 0.0 else -1.0
+        sy = 1.0 if y > 0.0 else -1.0
+        lim = (config.HALF_LENGTH_M + config.HALF_WIDTH_M - c
+               - margin * math.sqrt(2.0))
+        over = sx * x + sy * y - lim
+        if over > 0.0:
+            x -= sx * over * 0.5
+            y -= sy * over * 0.5
+    return (x, y)
+
+
+def on_chamfer(ball):
+    """(sx, sy) of the chamfer the ball is against, or None."""
+    c = config.ARENA_CORNER_CHAMFER_M
+    if c <= 0.0:
+        return None
+    sx = 1.0 if ball[0] > 0.0 else -1.0
+    sy = 1.0 if ball[1] > 0.0 else -1.0
+    gap = (config.HALF_LENGTH_M + config.HALF_WIDTH_M - c
+           - (sx * ball[0] + sy * ball[1])) / math.sqrt(2.0)
+    if gap >= WALL_MARGIN_M:
+        return None
+    # Only if the chamfer is the NEAREST surface. A ball flat against the end
+    # wall a hand's width from the chamfer is an end-wall ball.
+    if gap > min(config.HALF_LENGTH_M - abs(ball[0]),
+                 config.HALF_WIDTH_M - abs(ball[1])):
+        return None
+    return (sx, sy)
+
+
+def wall_gap(p, n) -> float:
+    """Distance from p to the wall whose inward normal is n."""
+    if abs(n[1]) > 0.9:
+        return config.HALF_WIDTH_M - abs(p[1])
+    if abs(n[0]) > 0.9:
+        return config.HALF_LENGTH_M - abs(p[0])
+    sx = 1.0 if p[0] > 0.0 else -1.0
+    sy = 1.0 if p[1] > 0.0 else -1.0
+    return (config.HALF_LENGTH_M + config.HALF_WIDTH_M
+            - config.ARENA_CORNER_CHAMFER_M
+            - (sx * p[0] + sy * p[1])) / math.sqrt(2.0)
 
 
 def is_reachable(p) -> bool:
-    margin = robot_circumradius() + 0.02
-    return (abs(p[0]) <= config.HALF_LENGTH_M - margin
-            and abs(p[1]) <= config.HALF_WIDTH_M - margin)
+    q = reachable_point(p)
+    return abs(q[0] - p[0]) < 1e-9 and abs(q[1] - p[1]) < 1e-9
 
 
 def wall_extraction(ball, attack_dir: float, me_pos=None,
-                    me_theta: float = 0.0):
+                    me_theta: float = 0.0, banned=()):
     """How to attack a ball that is pinned against a wall or in a corner.
 
     THE GEOMETRY THAT DOES NOT EXIST
@@ -717,11 +900,38 @@ def wall_extraction(ball, attack_dir: float, me_pos=None,
     Returns (aim, approach_point) with both guaranteed reachable, or None when
     the ball is in open play and the ordinary geometry applies.
     """
+    attacking_end = (ball[0] * attack_dir) > 0.0
+    ch = on_chamfer(ball)
+    if ch is not None and config.CHAMFER_AWARE:
+        # THE CHAMFER IS A WALL TOO, and the useful one: it is the only
+        # surface that turns a ball running along a side wall onto the end
+        # wall, where the goal is. Treated as a square corner, the ball was
+        # left sitting on it with every approach point outside the pitch.
+        sx, sy = ch
+        k = 1.0 / math.sqrt(2.0)
+        stand = (config.ROBOT_LENGTH_M / 2.0 + config.HORN_LENGTH_M * 0.5
+                 + config.BALL_RADIUS_M)
+        n_in = (-sx * k, -sy * k)
+        off = robot_circumradius() + 0.02
+        opts = [((sx * k, -sy * k), 0.0 if attacking_end else 0.6),
+                ((-sx * k, sy * k), 0.6 if attacking_end else 0.0)]
+        best, best_cost = None, 1e9
+        for (tx, ty), pen in opts:
+            approach = reachable_point((ball[0] - tx * stand + n_in[0] * off,
+                                        ball[1] - ty * stand + n_in[1] * off))
+            aim = (ball[0] + tx * 1.2 + n_in[0] * 0.05,
+                   ball[1] + ty * 1.2 + n_in[1] * 0.05)
+            cost = pen + (100.0 if (tx, ty) in banned else 0.0)
+            if me_pos is not None:
+                cost += math.hypot(approach[0] - me_pos[0],
+                                   approach[1] - me_pos[1])
+            if cost < best_cost:
+                best, best_cost = (aim, approach, (tx, ty)), cost
+        return best
+
     nx, ny = ball_against_wall(ball)
     if nx == 0.0 and ny == 0.0:
         return None
-
-    attacking_end = (ball[0] * attack_dir) > 0.0
 
     stand = (config.ROBOT_LENGTH_M / 2.0 + config.HORN_LENGTH_M * 0.5
              + config.BALL_RADIUS_M)
@@ -754,6 +964,17 @@ def wall_extraction(ball, attack_dir: float, me_pos=None,
         options.append((attack_dir, 0.0, 0.0 if not attacking_end else 0.35))
     if not options:
         options.append((0.0, -1.0 if ball[1] > 0.0 else 1.0, 0.0))
+    # The other way along each wall, as a fallback. Never preferred, but a
+    # preferred direction can be a dead end: toward their end along a side
+    # wall runs the ball into the corner, and the traces showed the robot
+    # grinding it there for 15-24 s. When the progress watchdog bans the
+    # preferred run, this is the way out.
+    # Not along our own end wall, though: reversed, that run crosses the face
+    # of our goal.
+    for tx, ty, pen in list(options):
+        if tx == 0.0 and not attacking_end:
+            continue
+        options.append((-tx, -ty, pen + config.SWEEP_REVERSE_PENALTY))
 
     def build(tx, ty):
         approach = reachable_point((ball[0] - tx * stand + off_x,
@@ -774,6 +995,8 @@ def wall_extraction(ball, attack_dir: float, me_pos=None,
     for tx, ty, penalty in options:
         aim, approach = build(tx, ty)
         cost = penalty
+        if (tx, ty) in banned:
+            cost += 100.0
         if me_pos is not None and config.WALL_SWEEP_PICK_NEAREST:
             cost += math.hypot(approach[0] - me_pos[0], approach[1] - me_pos[1])
             # ...and on the turn needed to get onto that heading.
@@ -854,6 +1077,8 @@ class ShadowDefender:
         from ai.controller import limits
         v_max, w_max = limits()
         target = self.shadow_point(ball, ball_vel)
+        if config.USE_ROUTE_AROUND and config.ROUTE_AROUND_DEFENCE:
+            target = route_around(me.pos, ball, target)
 
         dx, dy = target[0] - me.pos[0], target[1] - me.pos[1]
         rng = math.hypot(dx, dy)
@@ -930,9 +1155,20 @@ class DirectStriker:
         self.pinned = False
         self.pin_hold = 0.0
         self.tangent = (1.0, 0.0)
+        self.close_in = True
         self.attack_dir = attack_dir
+        self.banned: dict = {}
+        self._in_lane = False
+        self._appr_dir = None
+        self._appr_anchor = None
+        self._appr_t = 0.0
+        self.stalls = 0
+        self._sweep_anchor = None
+        self._sweep_dir = None
+        self._sweep_t = 0.0
 
-    def command(self, dt: float, me, ball, aim, ball_vel=(0.0, 0.0)):
+    def command(self, dt: float, me, ball, aim, ball_vel=(0.0, 0.0),
+                opp_pos=None):
         """Returns (v, omega, phase)."""
         from ai.controller import limits
         v_max, w_max = limits()
@@ -954,6 +1190,58 @@ class DirectStriker:
                  + config.BALL_RADIUS_M)
         strike = (bp[0] - ux * stand, bp[1] - uy * stand)
 
+        # PROGRESS WATCHDOG. A sweep direction that has not moved the ball in
+        # SWEEP_STALL_S is a dead end, whatever the geometry says; ban it for
+        # a while so the other way out gets its turn.
+        for k in list(self.banned):
+            self.banned[k] -= dt
+            if self.banned[k] <= 0.0:
+                del self.banned[k]
+        # Only time actually SWEEPING counts. Counting the drive to the lane
+        # banned the right direction before the robot had even arrived, and
+        # the sweep flipped ends every 1.5 s without touching the ball.
+        if self.pinned and config.SWEEP_WATCHDOG and self._in_lane:
+            if self._sweep_anchor is None or self._sweep_dir != self.tangent:
+                self._sweep_anchor, self._sweep_dir = ball, self.tangent
+                self._sweep_t = 0.0
+            self._sweep_t += dt
+            if math.hypot(ball[0] - self._sweep_anchor[0],
+                          ball[1] - self._sweep_anchor[1]) > 0.08:
+                self._sweep_anchor, self._sweep_t = ball, 0.0
+            elif self._sweep_t > config.SWEEP_STALL_S:
+                self.banned[self.tangent] = config.SWEEP_BAN_S
+                self.stalls += 1
+                self.pin_hold = 0.0
+                self._sweep_anchor = None
+        else:
+            self._sweep_anchor = None
+
+        # A sweep whose start point we cannot REACH is a dead end too -- the
+        # opponent parked on it, most often. Traced against the RC proxy: 30 s
+        # of "sweep:approach" toward a lane the other robot was sitting in.
+        # Longer limit than a stalled sweep, because getting to the lane
+        # legitimately takes a while.
+        # One clock per direction, reset only by the ball moving or the
+        # direction changing. Separate clocks for "approaching" and
+        # "sweeping" were each reset by the other as the robot flickered in
+        # and out of the lane, and neither ever ran out.
+        if self.pinned and config.SWEEP_WATCHDOG:
+            if (self._appr_dir != self.tangent or self._appr_anchor is None
+                    or math.hypot(ball[0] - self._appr_anchor[0],
+                                  ball[1] - self._appr_anchor[1]) > 0.08):
+                self._appr_dir, self._appr_t = self.tangent, 0.0
+                self._appr_anchor = ball
+            self._appr_t += dt
+            if self._appr_t > config.SWEEP_APPROACH_STALL_S:
+                self.banned[self.tangent] = config.SWEEP_BAN_S
+                self.stalls += 1
+                self.pin_hold = 0.0
+                self._appr_t = 0.0
+                self._appr_anchor = None
+        else:
+            self._appr_t = 0.0
+            self._appr_anchor = None
+
         # A ball on a wall has no "behind" inside the arena. Sweep it out
         # along the wall instead of driving at a point outside the pitch.
         #
@@ -966,7 +1254,13 @@ class DirectStriker:
         else:
             self.pinned = False
         if config.USE_WALL_EXTRACTION and not is_reachable(strike):
-            alt = wall_extraction(bp, self.attack_dir, me.pos, me.theta)
+            alt = wall_extraction(bp, self.attack_dir, me.pos, me.theta,
+                                  banned=tuple(self.banned))
+            self.close_in = alt is not None
+            if alt is None and config.USE_GOALMOUTH_SWEEP:
+                # Beside our goal mouth the "wall" is the open goal. Never
+                # steer in toward it.
+                alt = goalmouth_sweep(bp, self.attack_dir, me.pos)
             if alt is not None:
                 aim, strike, tangent = alt
                 self.pinned = True
@@ -990,9 +1284,66 @@ class DirectStriker:
         else:
             target = strike              # get behind it first
             phase = "lineup"
+            if config.USE_ROUTE_AROUND and not self.pinned:
+                via = route_around(me.pos, bp, strike)
+                if via is not strike:
+                    target = via
+                    phase = "around"
+            if config.AVOID_OPPONENT_BODY and opp_pos is not None:
+                via = avoid_robot(me.pos, target, opp_pos)
+                if via is not target:
+                    target = via
+                    phase = "avoid"
         self.mode = phase
 
-        if self.pinned:
+        # A SWEEP STARTS FROM THE SWEEP LANE, NOT FROM WHEREVER WE ARE.
+        #
+        # The heading-hold below points along the wall and drives. Run from
+        # the far side of the ball, that drives AWAY from it: with the
+        # referee reset switched off, the dead-ball traces showed the robot
+        # "sweeping" from beyond the opponent, 0.8 s commit after 0.8 s
+        # commit, while the ball sat untouched for the rest of the match.
+        # So only hold the heading once we are upstream of the ball, in its
+        # lane along the wall. Until then, drive to the approach point.
+        in_lane = True
+        self._in_lane = False
+        if self.pinned and config.SWEEP_REQUIRE_LANE:
+            tx, ty = self.tangent
+            along = rx * tx + ry * ty            # < 0: upstream of the ball
+            # Offset from the lane the robot's CENTRE runs along, which is the
+            # line through the approach point, not through the ball: the
+            # centre can never get closer to the wall than its circumradius.
+            # Only drifting AWAY from the wall leaves the lane. Closing in
+            # toward it is the whole point of the sweep, and counting it as
+            # "out of lane" sent the robot back out every time it got there.
+            ax_, ay_ = me.pos[0] - strike[0], me.pos[1] - strike[1]
+            wx, wy = strike[0] - bp[0], strike[1] - bp[1]
+            kk = wx * tx + wy * ty
+            wx, wy = wx - kk * tx, wy - kk * ty
+            wn = math.hypot(wx, wy)
+            if wn > 1e-6:
+                across = max(0.0, (ax_ * wx + ay_ * wy) / wn)
+            else:
+                across = abs(ax_ * -ty + ay_ * tx)
+            in_lane = (along < 0.05 and across < config.SWEEP_LANE_M
+                       and rn < config.SWEEP_LANE_RANGE_M)
+            self.dbg = dict(along=round(along, 3), across=round(across, 3),
+                            rn=round(rn, 3), strike=strike, tangent=self.tangent)
+            if not in_lane:
+                target = strike
+                phase = "sweep:approach"
+                # Round the ball first. The approach point sits beside the
+                # ball, and a straight line to it from the wrong side runs
+                # through the ball: two of three goals conceded in one traced
+                # match were the robot knocking the ball into its own net on
+                # the way to start a goal-mouth sweep.
+                if config.USE_ROUTE_AROUND:
+                    target = route_around(me.pos, bp, target)
+                if config.AVOID_OPPONENT_BODY and opp_pos is not None:
+                    target = avoid_robot(me.pos, target, opp_pos)
+
+        self._in_lane = self.pinned and in_lane
+        if self.pinned and in_lane:
             # SWEEPING A WALL IS A HEADING PROBLEM, NOT A POSITION ONE.
             #
             # The approach point for a pinned ball lands centimetres from the
@@ -1005,14 +1356,86 @@ class DirectStriker:
             # It requires pointing along the wall and going. So steer to the
             # tangent heading and hold it, which is stable however close the
             # robot is to the ball or the wall.
-            desired = math.atan2(self.tangent[1], self.tangent[0])
+            tx, ty = self.tangent
+            desired = math.atan2(ty, tx)
+            if config.SWEEP_CLOSE_IN and self.close_in:
+                # CLOSE IN ON THE WALL WHILE RUNNING ALONG IT.
+                #
+                # The lane is set a full circumradius off the wall so the robot
+                # can turn there without its horn tips striking it. But from
+                # that lane the front face does not reach a ball lying 0.1 m
+                # from the wall: the sweep drove straight past it, which was
+                # the dead-ball trace in which the robot ran the lane again
+                # and again beside a ball it never touched. Once pointed along
+                # the wall, steer in toward it until the ball sits on the face.
+                dxs, dys = strike[0] - bp[0], strike[1] - bp[1]
+                k = dxs * tx + dys * ty
+                nx_, ny_ = dxs - k * tx, dys - k * ty
+                nn = math.hypot(nx_, ny_)
+                if nn > 1e-6:
+                    nx_, ny_ = nx_ / nn, ny_ / nn
+                    lat = rx * nx_ + ry * ny_       # centre offset, + = off wall
+                    # Where the centre SHOULD run: body edge just clear of
+                    # the wall. A fixed ball-relative offset asked for the
+                    # centre closer to the wall than half the body width
+                    # allows, so the tilt never came off and the robot ground
+                    # along the wall on its front corner, clipping the ball
+                    # 0.47 m in 10 s.
+                    wall_d = wall_gap(bp, (nx_, ny_))
+                    want = (config.ROBOT_WIDTH_M / 2.0
+                            + config.SWEEP_WALL_CLEAR_M - wall_d)
+                    tilt = clamp((lat - want) * config.SWEEP_CLOSE_GAIN,
+                                 -math.radians(8.0),
+                                 math.radians(config.SWEEP_CLOSE_MAX_DEG))
+                    # Never tilt so far that the leading corner reaches the
+                    # wall first. At 20 degrees the corner touched with the
+                    # centre still 0.17 m out; pinned there the robot could
+                    # neither close in nor straighten, and crept along the
+                    # wall on its corner at 0.15 m/s. Limiting the tilt by
+                    # the clearance left makes it shrink to zero exactly as
+                    # the robot arrives alongside.
+                    gap_c = wall_gap(me.pos, (nx_, ny_)) - 0.008
+                    hl, hw = config.ROBOT_LENGTH_M / 2.0, config.ROBOT_WIDTH_M / 2.0
+                    tip = hl + config.HORN_LENGTH_M
+                    hy_ = config.HORN_GAP_M / 2.0 + config.HORN_WIDTH_M
+                    a_ok = 0.0
+                    for deg in range(0, int(config.SWEEP_CLOSE_MAX_DEG) + 1):
+                        aa = math.radians(deg)
+                        ext = max(hl * math.sin(aa) + hw * math.cos(aa),
+                                  tip * math.sin(aa) + hy_ * math.cos(aa))
+                        if ext > gap_c:
+                            break
+                        a_ok = aa
+                    tilt = min(tilt, a_ok)
+                    desired = math.atan2(ty * math.cos(tilt) - ny_ * math.sin(tilt),
+                                         tx * math.cos(tilt) - nx_ * math.sin(tilt))
+            # FINISH. Sweeping along THEIR end wall walks the ball across the
+            # face of the goal -- and, traced, straight on past it, 8 cm short
+            # of the line, because nothing told the robot the wall had become
+            # an open net. Once the ball is in front of the mouth, turn into
+            # it and drive the ball over the line.
+            hx = config.HALF_LENGTH_M
+            if (config.SWEEP_FINISH and abs(tx) < 0.5
+                    and bp[0] * self.attack_dir > hx - 0.30
+                    and abs(bp[1]) < config.HALF_GOAL_M - config.BALL_RADIUS_M):
+                gx = self.attack_dir * (hx + 0.20)
+                desired = math.atan2(bp[1] - me.pos[1], gx - me.pos[0])
+                self.pin_hold = 0.0
             err = wrap_angle(desired - me.theta)
-            if abs(err) > math.radians(config.WALL_SWEEP_TOL_DEG):
+            if abs(err) > math.radians(config.WALL_SWEEP_TOL_DEG
+                                       + (config.SWEEP_CLOSE_MAX_DEG
+                                          if config.SWEEP_CLOSE_IN else 0.0)):
                 self.driving = False
                 return 0.0, math.copysign(w_max, err), "sweep:turn"
             self.driving = True
-            return (v_max * config.WALL_SWEEP_SPEED_FRAC,
-                    clamp(err * 2.0, -w_max * 0.35, w_max * 0.35), "sweep")
+            # Square up BEFORE pushing. Driving on while still angled into the
+            # wall pressed the front corner onto it, wall contact bleeds away
+            # yaw, and the robot could never straighten: traced at 45 degrees
+            # into the wall, creeping the ball along at 0.15 m/s.
+            fade = max(0.0, 1.0 - abs(err) / math.radians(
+                config.WALL_SWEEP_TOL_DEG + config.SWEEP_CLOSE_MAX_DEG))
+            return (v_max * config.WALL_SWEEP_SPEED_FRAC * fade,
+                    clamp(err * 4.0, -w_max, w_max), "sweep")
 
         err = wrap_angle(math.atan2(target[1] - me.pos[1],
                                     target[0] - me.pos[0]) - me.theta)
@@ -1041,6 +1464,8 @@ class DirectStriker:
         self.mode = "lineup"
         self.pinned = False
         self.pin_hold = 0.0
+        self.banned = {}
+        self._sweep_anchor = None
 
 
 class StrikeSequence:

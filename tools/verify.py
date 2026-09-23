@@ -24,10 +24,10 @@ OPPONENTS = ("simple", "runner", "human")
 SIDES = ("agent", "simple")
 
 
-def one(ai, opp, matches, seconds, sets):
+def one(ai, opp, matches, seconds, sets, seed0=3000):
     cmd = [sys.executable, "-m", "tools.arena", "--ai", ai,
            "--opponent", opp, "--matches", str(matches),
-           "--seconds", str(seconds)]
+           "--seconds", str(seconds), "--seed0", str(seed0)]
     for kv in sets:
         cmd += ["--set", kv]
     env = dict(os.environ)
@@ -45,20 +45,26 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--matches", type=int, default=16)
     ap.add_argument("--seconds", type=float, default=120.0)
-    ap.add_argument("--jobs", type=int, default=6)
+    ap.add_argument("--jobs", type=int, default=3)
+    ap.add_argument("--seed0", type=int, default=3000)
+    ap.add_argument("--sides", default=",".join(SIDES),
+                    help="comma list: agent,simple. 'agent' alone skips the "
+                         "control rows, which do not change when the AI does")
     ap.add_argument("--set", action="append", default=[], metavar="KEY=VALUE")
     a = ap.parse_args()
+    sides = tuple(s for s in a.sides.split(",") if s)
 
-    jobs = [(ai, opp) for ai in SIDES for opp in OPPONENTS]
+    jobs = [(ai, opp) for ai in sides for opp in OPPONENTS]
     print(f"{len(jobs)} runs x {a.matches} matches x {a.seconds:.0f}s", flush=True)
     with ThreadPoolExecutor(max_workers=a.jobs) as ex:
-        futs = {j: ex.submit(one, j[0], j[1], a.matches, a.seconds, a.set)
+        futs = {j: ex.submit(one, j[0], j[1], a.matches, a.seconds, a.set,
+                             a.seed0)
                 for j in jobs}
         out = {j: f.result() for j, f in futs.items()}
 
     print(f"\n  {'our side':<10}{'opponent':<10}{'goals':>10}"
           f"{'diff':>9}{'+-':>6}{'W-D-L':>10}{'att3rd':>9}")
-    for ai in SIDES:
+    for ai in sides:
         for opp in OPPONENTS:
             r = out.get((ai, opp))
             if r is None:
@@ -70,7 +76,8 @@ def main() -> int:
                   f"{r['goals_for']:>5}-{r['goals_against']:<4}"
                   f"{r['mean_diff']:>+9.2f}{se:>6.2f}"
                   f"{r['wins']:>4}-{r['draws']}-{r['losses']:<4}"
-                  f"{r['att_third_pct']:>8.1f}%")
+                  f"{r['att_third_pct']:>8.1f}%"
+                  f"  shots {r['shots']:.1f} on tgt {r['on_target']:.2f}")
     print("\n  'control' is the 40-line SimpleBot playing our side, same seeds.")
     print("  The AI has to beat that row, not just beat the opponent.")
     return 0

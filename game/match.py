@@ -116,6 +116,8 @@ class Match:
         the match as a spectacle. Real arenas need a human to intervene;
         here the clock does it.
         """
+        if not config.STUCK_BALL_RESET:
+            return
         b = self.world.ball
         if length(b.vel) < config.STUCK_BALL_SPEED_MPS:
             self._stuck_timer += dt

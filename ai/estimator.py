@@ -129,7 +129,7 @@ class BallFilter:
         # entirely unmodelled here -- the ball can reverse in one timestep and
         # the filter must be willing to believe it.
         q_pos = (0.004 ** 2) * dt
-        q_vel = (2.5 ** 2) * dt
+        q_vel = (config.BALL_Q_VEL ** 2) * dt
         if self._contested:
             # A robot is close enough to be accelerating the ball, so the
             # constant-velocity model does not hold. Widen the covariance and

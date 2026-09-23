@@ -197,6 +197,12 @@ class World:
         self.score = [0, 0]
         self.last_goal_by: int | None = None
         self.goal_event = False       # set for one step when a goal is scored
+        # One ball, one goal. After a goal the ball is still live physics
+        # during the pause and rattles about inside the goal recess, crossing
+        # the line again on the way back out. Counted, that is a second goal
+        # nobody scored: 2 of 9 goals in one 4-match sample were exactly that.
+        # Disarmed by a goal, re-armed only when the ball is put back in play.
+        self.goal_armed = True
 
     # -- collision helpers -------------------------------------------------
 
@@ -246,6 +252,26 @@ class World:
             elif x - r < -back:
                 x = -back + r
                 vx = -vx * e
+
+        # Chamfered corners: a 45 degree wall across each corner.
+        c = config.ARENA_CORNER_CHAMFER_M
+        if c > 0.0:
+            sx = 1.0 if x > 0.0 else -1.0
+            sy = 1.0 if y > 0.0 else -1.0
+            k = 1.0 / math.sqrt(2.0)
+            pen = (sx * x + sy * y - (hx + hy - c)) * k + r
+            if pen > 0.0:
+                x -= sx * k * pen
+                y -= sy * k * pen
+                vn = (sx * vx + sy * vy) * k
+                if vn > 0.0:
+                    # Reflect the normal part, scrub the tangential part.
+                    tx, ty = -sy * k, sx * k
+                    vt = vx * tx + vy * ty
+                    vn = -vn * e
+                    vt *= (1.0 - f)
+                    vx = sx * k * vn + tx * vt
+                    vy = sy * k * vn + ty * vt
 
         b.pos = (x, y)
         b.vel = (vx, vy)
@@ -494,6 +520,24 @@ class World:
             vy = max(vy, 0.0)
             changed = True
 
+        c = config.ARENA_CORNER_CHAMFER_M
+        if c > 0.0:
+            sx = 1.0 if x > 0.0 else -1.0
+            sy = 1.0 if y > 0.0 else -1.0
+            th = robot.theta
+            co, si = math.cos(th), math.sin(th)
+            reach = max(sx * (lx * co - ly * si) + sy * (lx * si + ly * co)
+                        for lx, ly in robot.hull_local())
+            pen = sx * x + sy * y + reach - (hx + hy - c)
+            if pen > 0.0:
+                x -= sx * pen * 0.5
+                y -= sy * pen * 0.5
+                vn = sx * vx + sy * vy
+                if vn > 0.0:
+                    vx -= sx * vn * 0.5
+                    vy -= sy * vn * 0.5
+                changed = True
+
         if changed:
             robot.chassis.pos = (x, y)
             robot.chassis.vel = (vx, vy)
@@ -507,19 +551,23 @@ class World:
         counts. At 1 kHz that needs an implausible speed, but the same code
         runs in the MPC rollout at 20 ms, where it is entirely possible.
         """
+        if not self.goal_armed:
+            return None
         b = self.ball
         margin = b.radius if config.GOAL_REQUIRES_FULL_CROSS else 0.0
         hy = config.HALF_GOAL_M
+        line = config.HALF_LENGTH_M + margin
 
+        # Only an OUTWARD crossing is a goal. The swept test alone is
+        # direction-blind, so a ball coming back out of the net would score
+        # for the same side a second time.
         # Ball crossing +x line => robot 0 scored (it attacks +x).
-        hit = segment_crosses_x(b.prev_pos, b.pos,
-                                config.HALF_LENGTH_M + margin, -hy, hy)
-        if hit is not None:
-            return 0
-        hit = segment_crosses_x(b.prev_pos, b.pos,
-                                -(config.HALF_LENGTH_M + margin), -hy, hy)
-        if hit is not None:
-            return 1
+        if b.pos[0] > b.prev_pos[0]:
+            if segment_crosses_x(b.prev_pos, b.pos, line, -hy, hy) is not None:
+                return 0
+        elif b.pos[0] < b.prev_pos[0]:
+            if segment_crosses_x(b.prev_pos, b.pos, -line, -hy, hy) is not None:
+                return 1
         return None
 
     # -- main step ---------------------------------------------------------
@@ -564,6 +612,7 @@ class World:
             self.score[scorer] += 1
             self.last_goal_by = scorer
             self.goal_event = True
+            self.goal_armed = False
 
         self.t += dt
 
@@ -583,9 +632,11 @@ class World:
         elif favour == 1:
             self.robots[1].chassis.reset(+off * 0.6, 0.0, math.pi)
         self.ball.reset(config.KICKOFF_BALL_POS)
+        self.goal_armed = True
 
     def reset_ball_to_centre(self) -> None:
         self.ball.reset(config.KICKOFF_BALL_POS)
+        self.goal_armed = True
 
     # -- queries -----------------------------------------------------------
 

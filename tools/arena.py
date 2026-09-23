@@ -64,6 +64,17 @@ def _make_opponent(kind: str, world, index: int, seed: int):
     if kind == "human":
         from tools.benchmark import HumanLike
         return HumanLike(world, index, reaction=0.25, seed=seed)
+    if kind == "human_fast":
+        # A second human proxy, sharper than the first. Tuning against one
+        # fixture tunes against its habits; a change has to help against both.
+        from tools.benchmark import HumanLike
+        return HumanLike(world, index, reaction=0.15, sloppiness=0.06,
+                         seed=seed)
+    if kind == "human_rc":
+        # A person on an RC transmitter: continuous analog steering from a
+        # 0.2 s-old view. The closest proxy to the real opponent (FlySky).
+        from tools.benchmark import RCHuman
+        return RCHuman(world, index, seed=seed)
     if kind == "chase":
         from game.main import TruthChaser
         return TruthChaser(world, index)
@@ -95,6 +106,13 @@ class Probe:
         self.own_third = 0
         self.ticks = 0
         self._was_shot = False
+        # Dead ball: nobody has moved it for DEAD_S. With no referee reset,
+        # this is time the match is simply not being played -- almost always
+        # a ball pinned on a wall or wedged between the two robots.
+        self.dead = 0
+        self._still = 0
+        self.danger_own = 0      # ball within 0.75 m of OUR goal
+        self.danger_their = 0    # ball within 0.75 m of THEIR goal
 
     def _on_target(self, ball) -> bool:
         """Is the ball rolling at the goal mouth fast enough to reach it?"""
@@ -126,6 +144,18 @@ class Probe:
         elif x < -config.HALF_LENGTH_M * 0.33:
             self.own_third += 1
 
+        if math.hypot(*ball.vel) < 0.05:
+            self._still += 1
+            if self._still >= 300:          # 3 s at 100 Hz
+                self.dead += 301 if self._still == 300 else 1
+        else:
+            self._still = 0
+        gx = self.adir * config.HALF_LENGTH_M
+        if math.hypot(ball.pos[0] + gx, ball.pos[1]) < 0.75:
+            self.danger_own += 1
+        elif math.hypot(ball.pos[0] - gx, ball.pos[1]) < 0.75:
+            self.danger_their += 1
+
         # A "shot" is the RISING EDGE of the ball being struck goalward, so one
         # strike counts once however long the ball rolls.
         shot = math.hypot(*ball.vel) > 0.60 and ball.vel[0] * self.adir > 0.0
@@ -142,6 +172,9 @@ class Probe:
             "on_target": self.on_target,
             "att_third_pct": 100.0 * self.att_third / n,
             "own_third_pct": 100.0 * self.own_third / n,
+            "dead_pct": 100.0 * self.dead / n,
+            "danger_own_pct": 100.0 * self.danger_own / n,
+            "danger_their_pct": 100.0 * self.danger_their / n,
         }
 
 
@@ -186,12 +219,12 @@ def play(seed: int, seconds: float, opponent: str, ai: str = "agent") -> dict:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--opponent", default="simple",
-                    choices=("simple", "runner", "human", "chase"))
+                    choices=("simple", "runner", "human", "human_fast", "human_rc", "chase"))
     ap.add_argument("--matches", type=int, default=8)
     ap.add_argument("--seconds", type=float, default=60.0)
     ap.add_argument("--seed0", type=int, default=3000)
     ap.add_argument("--ai", default="agent",
-                    choices=("agent", "simple", "runner", "human", "chase"),
+                    choices=("agent", "simple", "runner", "human", "human_fast", "human_rc", "chase"),
                     help="what plays on OUR side; non-agent values are controls")
     ap.add_argument("--set", action="append", default=[], metavar="KEY=VALUE")
     ap.add_argument("--label", default="")
@@ -222,6 +255,7 @@ def main() -> int:
         "own_third_pct": statistics.mean(r["own_third_pct"] for r in rows),
         "shots_sd": (statistics.pstdev([r["shots"] for r in rows])
                      if a.matches > 1 else 0.0),
+        "rows": [dict(r, seed=a.seed0 + i) for i, r in enumerate(rows)],
     }
     print("JSON " + json.dumps(out), flush=True)
     return 0

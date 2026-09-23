@@ -60,6 +60,13 @@ GOAL_WIDTH_M = 0.550         # A 250 mm robot parked in a 400 mm goal covers
                              # Scale this with the robot, not with the pitch:
                              # what matters is goal width vs ROBOT width.         # opening size, centred on the short side
 GOAL_DEPTH_M = 0.300         # recess depth behind the goal line
+CHAMFER_AWARE = True         # the AI treats a chamfer as a wall to sweep along
+ARENA_CORNER_CHAMFER_M = 0.35 # length of each leg of a 45 degree block across
+                             # every corner. 0 = square corners. A square
+                             # corner is a place a ball can sit where no robot
+                             # can reach it: the robot centre cannot come
+                             # within its circumradius of either wall, and
+                             # with no referee reset the match ends there.
 
 WALL_RESTITUTION = 0.45      # ball bounciness off walls (0 = dead, 1 = perfect)
 WALL_FRICTION = 0.3         # tangential speed scrubbed off on wall contact
@@ -426,6 +433,20 @@ USE_REACHABILITY = True      # provable shot / block geometry
 # a first-order lag is what you would actually fit to it. The mismatch is
 # part of the point.
 DRIVETRAIN_TAU_S = 0.18      # velocity response time constant
+BALL_Q_VEL = 0.5             # ball filter velocity random walk, m/s per
+                             # root-second. High = reacts fast to a strike and
+                             # jitters when the ball is still. Was 2.5, which
+                             # had a STATIONARY ball believed to be moving at
+                             # up to 0.8 m/s; the striker and the shadow line
+                             # both lead the ball, so both chased a ghost.
+                             # Velocity error, 3 matches vs human, median/p90:
+                             #          ball still    moving    150 ms after hit
+                             #   2.5    0.29/0.59   0.26/0.51   0.28/0.74
+                             #   1.0    0.16/0.30   0.14/0.28   0.21/0.90
+                             #   0.5    0.08/0.18   0.08/0.18   0.18/0.92
+                             # Inflating it near robots (the contested gain)
+                             # made the still ball WORSE, since a still ball
+                             # usually has a robot beside it.
 BALL_CONTESTED_Q_GAIN = 1.0  # DEFAULT OFF (1.0 = no effect).
                              # Process-noise multiplier while a robot is
                              # close enough to be pushing the ball. The
@@ -663,7 +684,15 @@ KICKOFF_BALL_POS = (0.0, 0.0)
 KICKOFF_ROBOT_OFFSET_M = 0.55      # distance from centre each robot starts
 POST_GOAL_PAUSE_S = 1.5
 
-STUCK_BALL_TIMEOUT_S = 12.0        # ball barely moving for this long -> reset
+STUCK_BALL_RESET = False           # OFF: the ball returns to the centre ONLY
+                                   # after a goal. The reset hid the AI's
+                                   # worst failure (it cannot extract a pinned
+                                   # ball) and manufactured goals: 3 of 5
+                                   # conceded in one traced sample came within
+                                   # 4 s of a reset, from a free restart the
+                                   # opponent happened to be nearer. A real
+                                   # arena has no referee doing this.
+STUCK_BALL_TIMEOUT_S = 12.0        # if enabled: ball barely moving this long -> reset
 STUCK_BALL_SPEED_MPS = 0.05
 
 # Robot jam detection (ai/tactics.py). "Asking for speed and not getting it"
@@ -831,6 +860,55 @@ PINNED_CLAIM_MARGIN_M = 0.00  # claim a ball stuck on a wall far more
                               # the goal, and a wall ball is worth less than
                               # the position given up to go and get it.
 
+USE_ROUTE_AROUND = True       # approach the point behind the ball by going
+                              # ROUND the ball when it lies on the straight
+                              # line there, instead of driving through it and
+                              # knocking it back toward our own goal.
+ROUTE_AROUND_DEFENCE = False  # ...but NOT when recovering to the shadow line.
+                              # Measured against the human-shaped fixture, 12
+                              # matches: conceded 16 without route-around and
+                              # 23 with it. A defender racing back has no time
+                              # for a detour, and brushing the ball on the way
+                              # past is cheaper than arriving late.
+ROUTE_CLEARANCE_M = 0.24      # ball this close to the straight path = blocked
+ROUTE_SIDE_MULT = 1.15        # how far to the side of the ball the via-point
+                              # sits, in clearances
+USE_GOALMOUTH_SWEEP = True    # a ball in front of our goal, too close to the
+                              # line to get behind: sweep it out along the line
+GOALMOUTH_DEPTH_M = 0.50      # "too close": the robot centre cannot get within
+                              # its 0.27 m circumradius of the wall, and the
+                              # strike point sits 0.22 m behind the ball
+GOALMOUTH_WIDEN_M = 0.10      # count this far outside each post as the mouth
+GOALMOUTH_CENTRE_PENALTY_M = 0.35  # prefer sweeping out via the NEAR post
+SWEEP_REQUIRE_LANE = True     # hold the along-wall heading only from the
+                              # sweep lane upstream of the ball; elsewhere,
+                              # drive to the approach point first
+SWEEP_LANE_M = 0.18           # lateral offset from the ball's lane allowed
+SWEEP_LANE_RANGE_M = 0.60     # ...and how far upstream the lane starts
+SWEEP_WATCHDOG = True         # ban a sweep direction that is not moving the
+                              # ball, so the other way out gets tried
+SWEEP_STALL_S = 1.5           # ...no ball movement for this long = dead end
+SWEEP_APPROACH_STALL_S = 3.5  # ...or failing to REACH the sweep lane this long
+SWEEP_BAN_S = 4.0             # ...and that direction is off the table this long
+SWEEP_REVERSE_PENALTY = 1.2   # cost (m) of sweeping the "wrong" way along a
+                              # wall; only chosen when the right way is banned
+SWEEP_FINISH = True           # sweeping along their end wall: turn into the
+                              # net as soon as the ball is in front of it
+SWEEP_CLOSE_IN = True         # steer in toward the wall during a sweep, so
+                              # the front face actually meets the ball
+SWEEP_WALL_CLEAR_M = 0.012    # run with the body edge this far off the wall
+SWEEP_CLOSE_GAIN = 2.5        # rad of tilt per metre of lateral error
+SWEEP_CLOSE_MAX_DEG = 25.0    # never angle into the wall steeper than this
+AVOID_OPPONENT_BODY = True    # route round the other robot, not into it
+AVOID_CLEARANCE_M = 0.42      # two half-widths plus margin
+STILL_RADIUS_M = 0.04        # "not moved": stayed within this of where it was
+STILL_CLAIM_S = 2.0           # a ball that has not moved for this long is
+                              # ours to take, whoever is nearer. 0 = off.
+CLAIM_HYSTERESIS_M = 0.20     # once going for the ball, keep going unless the
+                              # opponent is nearer by this much more
+DANGER_RADIUS_M = 0.75        # ball this close to our goal centre = danger
+DANGER_CLAIM_MARGIN_M = 0.30  # ...and in danger, contest it this readily
+
 # --- shadow defending (ai/tactics.ShadowDefender) ----------------------
 # When the ball is not ours to claim, stand between it and our own goal and
 # hold that line facing it, instead of handing over to the planner's cover /
@@ -911,6 +989,15 @@ STUCK_DETECT_S = 0.90              # how long to be jammed before reacting.
                                    # driving backwards. A jam that clears
                                    # itself in under a second was never a jam.
 STUCK_ESCAPE_S = 0.55              # how long the reverse-and-turn escape runs
+STUCK_DETECT_YAW = True            # also count a turn on the spot that is
+                                   # not turning as a jam. Horn tips against
+                                   # a wall stop a spin dead, and a spin asks
+                                   # for no forward speed, so the travel test
+                                   # below never saw it.
+STUCK_MIN_TURN_DEG = 8.0           # turned less than this over the window,
+                                   # while commanding over half yaw, = jammed
+STUCK_ESCAPE_AWAY_FROM_WALL = True # escape toward open floor: forwards if the
+                                   # tail is the end against the wall
 STUCK_MIN_TRAVEL_M = 0.020         # travelled less than this over the detect
                                    # window, while asking for speed, = jammed.
                                    # Measured on POSITION, not velocity: a

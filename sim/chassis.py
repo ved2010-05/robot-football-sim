@@ -73,7 +73,7 @@ class Chassis:
         sides. Converting a desired (v, omega) into these is the caller's job,
         and the track width they assume is a choice they can get wrong.
         """
-        self.wheels[0].target_omega = omega_left    # FL
+        self.wheels[0].target_omega = omega_left    # FL (the left motor if coupled)
         self.wheels[2].target_omega = omega_left    # RL
         self.wheels[1].target_omega = omega_right   # FR
         self.wheels[3].target_omega = omega_right   # RR
@@ -186,17 +186,27 @@ class Chassis:
             for w in self.wheels:
                 w.sample_encoder(t)
 
+        # With one motor per side, wheels 0/1 (front) carry the motor, the
+        # encoder and the speed loop; the rear wheels 2/3 are belted to them.
+        coupled = config.DRIVE_MOTORS_PER_SIDE == 1
+        driven = self.wheels[:2] if coupled else self.wheels
+
         self._pid_accum += dt
         pid_dt = 1.0 / config.FIRMWARE_PID_HZ
         while self._pid_accum >= pid_dt:
             self._pid_accum -= pid_dt
-            for w in self.wheels:
+            for w in driven:
                 w.run_pid(pid_dt)
 
         # --- electrics ----------------------------------------------------
         self.battery_v = drivetrain.battery_voltage(self.wheels)
         motor_torques = []
-        for w in self.wheels:
+        for i, w in enumerate(self.wheels):
+            if coupled and i >= 2:
+                w.current_a = 0.0
+                w.motor_torque = 0.0
+                motor_torques.append(0.0)
+                continue
             tau = w.electrical_torque(self.battery_v)
             tau = w.apply_backlash(tau, dt)
             tau += w.friction_torque()
@@ -210,9 +220,21 @@ class Chassis:
         # The ground pushes back on the wheel it is driving. A wheel whose
         # motor makes more torque than the tyre can transmit accelerates and
         # spins -- no special case needed, it falls out of this equation.
-        for w, tau, fx in zip(self.wheels, motor_torques, long_forces):
-            reaction = fx * config.WHEEL_RADIUS_M
-            w.integrate(tau - reaction, dt)
+        if coupled:
+            # One motor, two wheels, a belt between them: a single rotating
+            # body. Both tyres push back on the same gearbox.
+            for m, s in ((0, 2), (1, 3)):
+                wm, ws = self.wheels[m], self.wheels[s]
+                reaction = (long_forces[m] + long_forces[s]) * config.WHEEL_RADIUS_M
+                inertia = (wm.motor.inertia_output_kgm2
+                           + 2.0 * config.WHEEL_INERTIA_KGM2)
+                wm.omega += (motor_torques[m] - reaction) / inertia * dt
+                wm.angle += wm.omega * dt
+                ws.omega, ws.angle = wm.omega, wm.angle
+        else:
+            for w, tau, fx in zip(self.wheels, motor_torques, long_forces):
+                reaction = fx * config.WHEEL_RADIUS_M
+                w.integrate(tau - reaction, dt)
 
         # --- body dynamics ------------------------------------------------
         force_world = rotate((fx_body, fy_body), self.theta)

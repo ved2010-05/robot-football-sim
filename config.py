@@ -127,17 +127,14 @@ BALL_MIN_SPEED = 0.005       # below this the ball is snapped to rest
 
 ROBOT_LENGTH_M = 0.300       # X extent of the body, EXCLUDING horns       # X extent of the body (front-back)
 ROBOT_WIDTH_M = 0.250        # Y extent of the body        # Y extent of the body (left-right)
-ROBOT_MASS_KG = 7.000        # A 300 x 250 x ~150 mm machine at 4.5 kg is
-                             # 0.40 g/cm3 -- a normal mostly-air robot:
-                             # 4x 37D gearmotor 800 g, 4x 100 mm wheels 240 g,
-                             # chassis/plate/standoffs 1.6 kg, 3S 5000 mAh
-                             # LiPo 400 g, electronics 250 g, horns +
-                             # fixings 400 g, contingency 800 g.         # was 4.200, which is 1.98 g/cm3 for this
-                              # footprint -- denser than nylon and approaching
-                              # solid aluminium. Itemised build: 4x 37D
-                              # gearmotor 800 g, 4x 100 mm wheels 240 g,
-                              # chassis 300 g, 3S LiPo 180 g, ESP32 + drivers
-                              # 100 g, fixings 120 g = ~1.74 kg.
+ROBOT_MASS_KG = 3.000        # The 2-motor build, itemised (estimates until
+                             # weighed): 2x Rhino GB37 350 g, 4 printed wheels
+                             # with TPU tyres 200 g, belts, pulleys, bearings
+                             # and axles 250 g, two 6 mm ply decks 600 g, 3S
+                             # LiPo 300 g, 2x BTS7960 130 g, ESP32, buck and
+                             # wiring 120 g, horns, bumper and marker plate
+                             # 300 g, fixings 200 g, contingency 300 g.
+                             # Weigh both robots and put the real figure here.
 ROBOT_INERTIA_SCALE = 1.0    # multiplier on the computed rectangular inertia,
                              # to account for mass not being evenly spread
 
@@ -234,7 +231,10 @@ SLIP_REFERENCE_MPS = 0.10
 #  at build time) -- see motors.py. The Pololu figures are published.
 # =====================================================================
 
-MOTOR = "pololu_37d_30_1"
+MOTOR = "rhino_gb37_330"
+DRIVE_MOTORS_PER_SIDE = 1    # 1: one motor per side, belted to both wheels on
+                             # that side (the build: 2 motors, 4 wheels).
+                             # 2: a motor on every wheel.
 
 BATTERY_NOMINAL_V = 12.0
 BATTERY_INTERNAL_R = 0.025    # was 0.08, which is a small or tired pack and
@@ -261,7 +261,12 @@ FIRMWARE_I_LIMIT = 0.6
 #  ai/ undoes what can be undone; the rest becomes measurement noise.
 # =====================================================================
 
-CAM_HEIGHT_M = 2.500         # lens height above the playing surface
+CAM_HEIGHT_M = 3.050         # lens height above the playing surface. The
+                             # Arducam OV9281 has a 70 deg horizontal lens;
+                             # seeing the pitch plus the 18% margin below
+                             # (4.25 x 2.60 m) needs 3.03 m on the long axis
+                             # and 2.97 m on the short one. Lower ceiling =
+                             # wider M12 lens.
 CAM_RESOLUTION_PX = (1280, 800)
 CAM_COVERAGE_MARGIN = 1.18   # The camera must see MORE than the arena.
                              #
@@ -278,7 +283,8 @@ CAM_COVERAGE_MARGIN = 1.18   # The camera must see MORE than the arena.
                              # Budget for parallax, lens distortion and
                              # mounting error. This applies to the real rig
                              # too: frame wider than the pitch.
-CAMERA_FPS = 90.0
+CAMERA_FPS = 100.0           # OV9281 at 1280x800 MJPG. MONOCHROME: markers
+                             # must be black/white shapes, not colours.
 
 EXPOSURE_S = 0.002           # 2 ms. Longer = more motion blur, more lag.
                              # Adds EXPOSURE_S/2 of effective latency and

@@ -202,6 +202,23 @@ _add(Motor(
 ))
 
 _add(Motor(
+    key="rhino_gb37_330",
+    name="Robokits Rhino GB37 12V 330 RPM encoder motor (RMCS-4093)",
+    nominal_v=12.0, noload_rpm=330.0,
+    # Robokits publishes only speed and RATED torque (2.2 kg-cm). Stall
+    # torque and current are ESTIMATES for a 37 mm 1:30 spur gearmotor of
+    # this class (stall ~3x rated, ~4.5 A). The encoder is the usual 11-pulse
+    # Hall disc on the motor shaft, 44 counts per motor rev in quadrature.
+    # Replace all three with bench measurements when the motors arrive.
+    stall_torque_nm=6.5 * KGCM_TO_NM,
+    stall_current_a=4.5, noload_current_a=0.25,
+    gear_ratio=30.0, encoder_cpr_motor=44.0,
+    rotor_inertia_kgm2=_J_RS545,
+    verified=False, source="https://robokits.co.in (speed, rated torque only)",
+    note="The build motor. Stall figures estimated until measured.",
+))
+
+_add(Motor(
     key="pololu_37d_50_1",
     name="Pololu 37Dx70L 12V, 50:1, 64 CPR encoder (helical pinion)",
     nominal_v=12.0, noload_rpm=200.0,

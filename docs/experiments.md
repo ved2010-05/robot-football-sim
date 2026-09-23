@@ -206,9 +206,70 @@ runner -1.25 +- 0.46. Rejected.
 how they are accepted. Both of these would have shipped on the strength of
 the pictures.
 
+## 12. The real build in the sim
+
+**Change.** The sim was moved from a 7 kg robot with a motor on every wheel to
+the robot actually being built: 3 kg, one Robokits GB37 330 RPM motor per
+side belted to both wheels on that side, Arducam OV9281 at 100 fps, 3.05 m up.
+Motor stall figures are estimates until bench-measured (see `docs/build.md`).
+
+**Measured in sim.** 1.67 m/s top speed, half speed in 0.26 s, 4.4 rad/s spin,
+about 3 A per motor while spinning.
+
+**Effect on the AI**, same code, three human proxies, 24 matches each:
+-1.75 +- 0.61 against the old robot. Still ahead of every proxy (+0.08,
++0.17, +0.25), but only just. Everything tuned so far was tuned on a robot
+that will not exist.
+
+## 13. The AI's delay estimate is three times too high
+
+**Finding.** The online latency identifier reported 67-93 ms against a true
+26 ms, throughout every match. It correlates commanded speed with observed
+speed, and observed speed lags the command by the delay PLUS the motors'
+spin-up time, which the correlation absorbs.
+
+**Tried.** Passing the command through a first-order model of the drivetrain
+before correlating: 4-15 ms, now too low. The real response is limited by
+motor current, so it ramps rather than decays exponentially, and a wrong
+model gives a wrong answer in the other direction. Left off.
+
+**Open.** Whether a fixed lead does better in matches (runs at 20, 55 and 90
+ms were started and paused unfinished).
+
+## 14. The intent channel is worth nothing, because nothing reads it
+
+**Question.** How much is it worth to read the opponent's live stick command?
+
+**Method.** Same code, seeds and opponents, intent on against intent off.
+
+| opponent | change with intent OFF |
+|---|---|
+| human (24) | +0.12 +- 0.36 |
+| human_fast (24) | +0.17 +- 0.25 |
+| human_rc (24) | +0.04 +- 0.27 |
+| **three human proxies** | **+0.33 +- 0.51, no detectable effect** |
+| simple (16) | -0.38 +- 0.30 |
+
+**Why.** Intent feeds two places. One is the opponent's position filter, where
+it slightly sharpens an estimate no decision needs that sharply. The other is
+the rollout planner, which predicts the opponent and picks the part of the
+goal they cannot cover. That planner was called 0 times in a 20 s match: the
+direct striker and shadow defender now handle every case above it, so the
+planner branch is unreachable and the aim is always the centre of the goal.
+The reachability analysis and the opponent model are unreachable with it.
+
+**Consequence.** A capability can be present, tested, and switched on, and
+still contribute nothing, because the code path that used it was bypassed by
+later work. The only way this surfaced was switching it off and measuring.
+Intent has to be wired into the decisions that now run (claiming the ball,
+aim, defensive position) before "what is it worth" means anything.
+
 ## Open questions
 - The human proxies are the weakest link. The real opponent drives a FlySky RC
   transmitter; `human_rc` models continuous analog steering from a 0.2 s-old
   view. None of the proxies is fitted to a person.
-- With a FlySky, the intent channel only exists if the stick values reach the
-  PC. It has to be measured both on and off.
+- Intent, aim and the opponent model are disconnected from the decisions that
+  run. Reconnect them, then re-measure intent on and off.
+- The AI has not been retuned for the real build.
+- The latency lead: identified figure wrong, best fixed value not yet measured.
+- Runner regression from the time-to-strike claim rule, unexplained.

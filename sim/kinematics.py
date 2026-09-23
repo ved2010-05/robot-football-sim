@@ -3,7 +3,7 @@ Command limits and twist-to-wheels conversion. Pure functions of geometry.
 
 WHY THIS IS ITS OWN MODULE
 --------------------------
-These three lived in `game/input.py` — the keyboard handler — because the human
+These three lived in `game/input.py` -- the keyboard handler -- because the human
 player needed them first. Everything else then imported them from there, which
 meant `ai/controller.py` depended on the keyboard module, and so the AI could
 not be lifted onto real hardware without dragging the match harness and a

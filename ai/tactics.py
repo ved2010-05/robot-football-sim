@@ -224,6 +224,13 @@ def avoid_robot(me_pos, target, opp_pos, clearance: float | None = None):
     if math.hypot(target[0] - opp_pos[0],
                   target[1] - opp_pos[1]) < clearance * 0.9:
         return target
+    # Already touching it: routing round a body pressed against ours only
+    # spins us on the spot. Traced against the runner: 5 s of "avoid:turn"
+    # from the kickoff, pinned by it, with the ball free 1.5 m away.
+    if (config.AVOID_NOT_IN_CONTACT
+            and math.hypot(me_pos[0] - opp_pos[0], me_pos[1] - opp_pos[1])
+            < clearance * 0.85):
+        return target
     return route_around(me_pos, opp_pos, target, clearance)
 
 

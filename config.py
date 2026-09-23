@@ -906,6 +906,7 @@ SWEEP_CLOSE_GAIN = 2.5        # rad of tilt per metre of lateral error
 SWEEP_CLOSE_MAX_DEG = 25.0    # never angle into the wall steeper than this
 AVOID_OPPONENT_BODY = True    # route round the other robot, not into it
 AVOID_CLEARANCE_M = 0.42      # two half-widths plus margin
+AVOID_NOT_IN_CONTACT = True   # no avoiding a robot already against ours
 AVOID_SKIP_CONTESTED_M = 0.45 # don't avoid the opponent when it is within this
                               # of the ball (0 = always avoid): beside the ball
                               # it is a contest, not an obstacle

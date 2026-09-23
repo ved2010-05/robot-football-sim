@@ -163,9 +163,29 @@ Against the baseline AI on the same arena, human proxies combined: +2.21 +- 0.64
 
 **Decision.** Adopted. The runner regression is real and not yet explained.
 
-## Open questions
+## 10. Chamfer size, in full matches
 
-- Chamfer size, settled by full matches, not the scenario set.
+**Method.** Current AI, three human proxies, 24 matches each, same seeds.
+
+| chamfer | goals/match (both sides) | dead % | human proxies vs 0.35 m |
+|---|---|---|---|
+| 0.25 m | 1.53 | 57.9 | -1.08 +- 0.60 (within noise) |
+| 0.35 m | 1.56 | 61.0 | reference |
+| 0.45 m | 1.85 | 57.0 | -1.12 +- 0.54 (worse) |
+
+**Finding.** Bigger chamfers open the game up for both sides but do not help
+our AI in particular. A geometric reason for an interior optimum: to sweep a
+ball along the end wall into the goal, the robot's start point sits about
+0.22 m upstream and 0.27 m off the wall. With 0.35 m chamfers that point is
+inside the chamfer unless the ball is within about 0.42 m of the centre line,
+so a band of end wall next to each chamfer becomes a trap. Bigger chamfers
+widen that band; smaller ones leave more of the corner.
+
+**Caveat.** The AI was developed on the 0.35 m arena and may be tuned to it.
+
+**Decision.** 0.35 m for the real arena.
+
+## Open questions
 - The human proxies are the weakest link. The real opponent drives a FlySky RC
   transmitter; `human_rc` models continuous analog steering from a 0.2 s-old
   view. None of the proxies is fitted to a person.

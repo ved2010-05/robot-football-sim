@@ -43,8 +43,24 @@ class Renderer:
         self.human = human
         self.ai = ai_agent
 
-        self.scale = config.RENDER_SCALE_PX_PER_M
+        # Be DPI-aware on Windows. Otherwise the OS stretches the whole
+        # window by the display scaling (125% here), and a window sized to
+        # fit the screen ends up bigger than it -- score bar off the bottom.
+        try:
+            import ctypes
+            ctypes.windll.shcore.SetProcessDpiAwareness(1)
+        except Exception:                                 # noqa: BLE001
+            pass
+        self.root = tk.Tk()
+
+        # Fit the screen: the configured scale is a maximum, not a promise.
         margin = config.RENDER_MARGIN_PX
+        sw = self.root.winfo_screenwidth()
+        sh = self.root.winfo_screenheight()
+        fit_w = (sw - 40 - 2 * margin) / (config.ARENA_LENGTH_M
+                                          + 2 * config.GOAL_DEPTH_M)
+        fit_h = (sh - 140 - 96 - 2 * margin) / config.ARENA_WIDTH_M
+        self.scale = min(config.RENDER_SCALE_PX_PER_M, fit_w, fit_h)
         pitch_w = config.ARENA_LENGTH_M * self.scale
         pitch_h = config.ARENA_WIDTH_M * self.scale
         goal_d = config.GOAL_DEPTH_M * self.scale
@@ -54,7 +70,6 @@ class Renderer:
         self.cx = self.width / 2.0
         self.cy = margin + pitch_h / 2.0
 
-        self.root = tk.Tk()
         self.root.title(title)
         self.root.configure(bg=C_BG)
         self.root.resizable(False, False)
@@ -70,6 +85,7 @@ class Renderer:
         self.root.protocol("WM_DELETE_WINDOW", self._quit)
 
         self.paused = False
+        self._still = 0.0
         self._overlay_error = None
         self.running = True
         self._last_wall = None
@@ -89,7 +105,12 @@ class Renderer:
                 self.human.clear()
             return
         if k == "r":
+            # Manual restart, the referee's call. Clear the AI's in-flight
+            # manoeuvre too, or it carries on sweeping a wall that has gone.
             self.match.world.kickoff()
+            for ctl in self.match.controllers:
+                if hasattr(ctl, "clear"):
+                    ctl.clear()
             return
         # Overlay toggles
         if k == "f1":
@@ -141,6 +162,17 @@ class Renderer:
         c.create_oval(self.sx(0) - r, self.sy(0) - r,
                       self.sx(0) + r, self.sy(0) + r, outline=C_LINE, width=1)
 
+        # Corner blocks: 45 degree chamfers. Solid, like the walls.
+        ch = config.ARENA_CORNER_CHAMFER_M
+        if ch > 0.0:
+            for sgx in (-1, 1):
+                for sgy in (-1, 1):
+                    c.create_polygon(
+                        self.sx(sgx * hx), self.sy(sgy * hy),
+                        self.sx(sgx * (hx - ch)), self.sy(sgy * hy),
+                        self.sx(sgx * hx), self.sy(sgy * (hy - ch)),
+                        fill=C_LINE, outline=C_LINE)
+
         # Goal recesses, drawn behind each goal line.
         for sgn, col in ((+1, C_AI), (-1, C_HUMAN)):
             x0 = sgn * hx
@@ -151,6 +183,11 @@ class Renderer:
             # Goal mouth highlight
             c.create_line(self.sx(x0), self.sy(gh), self.sx(x0), self.sy(-gh),
                           fill=col, width=4)
+            # Say whose goal it is: each is drawn in the colour of the robot
+            # that SCORES in it, which is not obvious at a glance.
+            c.create_text(self.sx(sgn * (hx + gd / 2)), self.sy(-gh) + 16,
+                          text="AI scores" if sgn > 0 else "you score",
+                          fill=col, font=("Consolas", 9))
 
     def _draw_robot(self, robot, colour: str, ghost: bool = False,
                     pose=None) -> None:
@@ -292,6 +329,18 @@ class Renderer:
         c.create_text(self.cx, y0 + 26, text=f"{int(mins)}:{secs:04.1f}",
                       fill=C_DIM, font=("Consolas", 12))
 
+        # Dead-ball clock. There is no automatic reset any more: the ball
+        # only goes back to the centre after a goal, or when YOU press R.
+        bv = m.world.ball.vel
+        if (bv[0] * bv[0] + bv[1] * bv[1]) ** 0.5 < 0.05:
+            self._still += 1.0 / config.RENDER_HZ
+        else:
+            self._still = 0.0
+        if self._still > 3.0:
+            c.create_text(self.cx, y0 + 46,
+                          text=f"ball dead {self._still:4.0f}s   (R restarts)",
+                          fill=C_WARN, font=("Consolas", 10))
+
         left = []
         if config.SHOW_ESTIMATOR_HUD and self.ai is not None:
             dbg = getattr(self.ai, "debug", {}) or {}
@@ -313,8 +362,8 @@ class Renderer:
                 fps = (len(self.frame_times) - 1) / span
         if self._overlay_error:
             left.append(f"overlay error: {self._overlay_error[:60]}")
-        left.append(f"{fps:4.0f} fps   "
-                    f"space=pause  r=kickoff  F1-F5=overlays  esc=quit")
+        left.append(f"{fps:4.0f} fps   W/S drive  A/D turn  "
+                    f"space=pause  r=restart  F1-F5=overlays  esc=quit")
 
         for i, line in enumerate(left):
             c.create_text(14, y0 - 10 + i * 15, text=line, anchor="w",

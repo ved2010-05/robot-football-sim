@@ -891,6 +891,8 @@ GOALMOUTH_CENTRE_PENALTY_M = 0.35  # prefer sweeping out via the NEAR post
 SWEEP_REQUIRE_LANE = True     # hold the along-wall heading only from the
                               # sweep lane upstream of the ball; elsewhere,
                               # drive to the approach point first
+SWEEP_BLOCKED_LANE = False    # when the ideal lane start is inside a
+                              # chamfer, sweep from anywhere upstream
 SWEEP_LANE_M = 0.18           # lateral offset from the ball's lane allowed
 SWEEP_RUNWAY_M = 0.0          # extra run-up before the ball. Tried at 0.12
                               # and 0.25 to give the robot room to close in;

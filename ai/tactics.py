@@ -1403,6 +1403,22 @@ class DirectStriker:
                 across = abs(ax_ * -ty + ay_ * tx)
             in_lane = (along < 0.05 and across < config.SWEEP_LANE_M
                        and rn < config.SWEEP_LANE_RANGE_M)
+            # BLOCKED LANE. Next to a chamfer the ideal start point is inside
+            # the corner block, so it gets clamped out into the pitch and the
+            # robot can never be "in lane" by the test above. This is the
+            # band of end wall beside each chamfer -- and the chamfer sweep
+            # delivers balls straight into it. There, any upstream position
+            # within range will do; the close-in steering brings the face
+            # onto the ball.
+            if not in_lane and config.SWEEP_BLOCKED_LANE and wn > 1e-6:
+                stand_ = (config.ROBOT_LENGTH_M / 2.0
+                          + config.HORN_LENGTH_M * 0.5 + config.BALL_RADIUS_M)
+                off_ = robot_circumradius() + 0.02
+                ideal = (bp[0] - tx * stand_ + wx / wn * off_,
+                         bp[1] - ty * stand_ + wy / wn * off_)
+                if (not is_reachable(ideal) and along < 0.05
+                        and rn < config.SWEEP_LANE_RANGE_M):
+                    in_lane = True
             self.dbg = dict(along=round(along, 3), across=round(across, 3),
                             rn=round(rn, 3), strike=strike, tangent=self.tangent)
             if not in_lane:

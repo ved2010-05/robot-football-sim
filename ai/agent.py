@@ -181,7 +181,7 @@ class Agent:
         # DEADLOCK: nose-to-nose with the ball trapped. Pushing harder
         # cannot win against an identical robot, so disengage and go round.
         if self.deadlock.update(dt, me, belief.robots[self.opp_index],
-                                belief.ball_pos):
+                                belief.ball_pos, self.attack_dir):
             v, omega = self.deadlock.command()
             self._cmd = (v, omega)
             self._wheels = controller.to_wheels(v, omega)

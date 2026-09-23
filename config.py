@@ -169,6 +169,8 @@ HORN_GAP_M = 0.1           # INNER clear span between the two bars.
                              # Default is 55 mm against a 43 mm ball: 12 mm of
                              # total play. Widen it and carrying degrades fast.
 
+HORNS_HIT_ROBOTS = False     # horns collide with the other robot's body.
+                             # Off, they pass straight through it.
 ROBOT_RESTITUTION = 0.10     # robot-robot collision bounciness
 
 
@@ -906,7 +908,9 @@ SWEEP_CLOSE_GAIN = 2.5        # rad of tilt per metre of lateral error
 SWEEP_CLOSE_MAX_DEG = 25.0    # never angle into the wall steeper than this
 AVOID_OPPONENT_BODY = True    # route round the other robot, not into it
 AVOID_CLEARANCE_M = 0.42      # two half-widths plus margin
-AVOID_NOT_IN_CONTACT = True   # no avoiding a robot already against ours
+AVOID_NOT_IN_CONTACT = False  # no avoiding a robot already against ours.
+                              # Measured: human proxies +0.38 +- 0.55 (no
+                              # effect), runner -1.25 +- 0.46. Off.
 AVOID_SKIP_CONTESTED_M = 0.45 # don't avoid the opponent when it is within this
                               # of the ball (0 = always avoid): beside the ball
                               # it is a contest, not an obstacle
@@ -977,6 +981,13 @@ DRIVE_MIN_BEARING_M = 0.30    # the same fault in the shared controller:
 # --- deadlock (ai/tactics.DeadlockBreaker) -----------------------------
 # Two equal robots nose to nose with the ball pinned between them cannot
 # resolve it by pushing. Detect it and go round instead.
+DEADLOCK_MODE = "backoff"    # head-on shove with the ball pinched between:
+                             # "backoff" disengage, "pivot" keep pushing and
+                             # twist the ball out on our side, "off" never.
+                             # The filmstrips made backing off look like it
+                             # hands the ball over. Measured on the three
+                             # human proxies against backoff: pivot -1.98
+                             # +- 0.78, off -3.00 +- 0.66. Backoff stays.
 DEADLOCK_DETECT_S = 0.35     # nose-to-nose with the ball trapped this long
 DEADLOCK_ESCAPE_S = 0.60     # committed back-out-and-turn
 

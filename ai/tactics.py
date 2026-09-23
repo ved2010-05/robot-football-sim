@@ -770,7 +770,9 @@ class DeadlockBreaker:
         self.side = 1.0
         self.breaks = 0
 
-    def update(self, dt: float, me, opp, ball_pos) -> bool:
+    def update(self, dt: float, me, opp, ball_pos, attack_dir: float = 1.0) -> bool:
+        if config.DEADLOCK_MODE == "off":
+            return False
         if self.active > 0.0:
             self.active -= dt
             return self.active > 0.0
@@ -800,12 +802,24 @@ class DeadlockBreaker:
             self.breaks += 1
             # Peel toward the side with more room, so the way round is open.
             self.side = -1.0 if me.pos[1] > 0.0 else 1.0
+            if config.DEADLOCK_MODE == "pivot":
+                # Rotate so the ball rolls off our horns toward THEIR goal:
+                # turning left swings the nose left, and the ball squeezed on
+                # the face escapes to the right, and vice versa. Pick the
+                # rotation whose escape side points up the pitch.
+                fx, fy = math.cos(me.theta), math.sin(me.theta)
+                right = (fy, -fx)            # local -y in world
+                self.side = 1.0 if right[0] * attack_dir > 0.0 else -1.0
             return True
         return False
 
     def command(self) -> tuple[float, float]:
         from ai.controller import limits
         v_max, w_max = limits()
+        if config.DEADLOCK_MODE == "pivot":
+            # Keep the pressure on and twist: the ball squirts out sideways
+            # on our side instead of being handed over.
+            return 0.5 * v_max, self.side * w_max
         # Back out and swing the nose away: a committed disengage, not a nudge.
         return -0.85 * v_max, self.side * 0.85 * w_max
 

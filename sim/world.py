@@ -448,6 +448,48 @@ class World:
                          self.ball.vel[1] + escape[1] * speed)
 
     def _resolve_robot_robot(self) -> None:
+        self._resolve_body_body()
+        if config.HORNS_HIT_ROBOTS:
+            a, bb = self.robots
+            self._resolve_horns_on(a, bb)
+            self._resolve_horns_on(bb, a)
+
+    def _resolve_horns_on(self, horned: Robot, other: Robot) -> None:
+        """The horns are metal bars, not ghosts.
+
+        Only the two bodies used to collide, so one robot's horns passed
+        straight through the other -- visible in the goal filmstrips, and
+        exactly the contact that decides a scrum: horns hooking a body, or
+        levering it round. Each bar is tested as three small circles along
+        its length against the other robot's body.
+        """
+        if dist(horned.pos, other.pos) > 0.6:
+            return
+        r = config.HORN_WIDTH_M / 2.0 + 0.002
+        for p0, p1 in horned.horn_segments():
+            for f in (0.2, 0.6, 1.0):
+                c = (p0[0] + (p1[0] - p0[0]) * f, p0[1] + (p1[1] - p0[1]) * f)
+                hit = circle_vs_rect(c, r, other.pos, other.theta,
+                                     other.half_len, other.half_wid)
+                if hit is None:
+                    continue
+                n = hit.normal                 # from OTHER toward the horn
+                push = hit.depth * 0.5
+                horned.chassis.pos = (horned.chassis.pos[0] + n[0] * push,
+                                      horned.chassis.pos[1] + n[1] * push)
+                other.chassis.pos = (other.chassis.pos[0] - n[0] * push,
+                                     other.chassis.pos[1] - n[1] * push)
+                rel = (horned.vel[0] - other.vel[0],
+                       horned.vel[1] - other.vel[1])
+                vn = dot(rel, n)
+                if vn >= 0.0:
+                    continue
+                inv_m = 1.0 / horned.chassis.mass + 1.0 / other.chassis.mass
+                j = -(1.0 + config.ROBOT_RESTITUTION) * vn / inv_m
+                horned.chassis.apply_impulse((n[0] * j, n[1] * j), c)
+                other.chassis.apply_impulse((-n[0] * j, -n[1] * j), c)
+
+    def _resolve_body_body(self) -> None:
         a, bb = self.robots
         hit = rect_vs_rect(a.pos, a.theta, a.half_len, a.half_wid,
                            bb.pos, bb.theta, bb.half_len, bb.half_wid)

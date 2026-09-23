@@ -185,6 +185,27 @@ widen that band; smaller ones leave more of the corner.
 
 **Decision.** 0.35 m for the real arena.
 
+## 11. Two plausible fixes that measurement rejected
+
+**Head-on deadlock.** Filmstrips of a 0-7 match showed the AI backing out of
+every head-on shove at the kickoff while the opponent drove through and
+scored. It looked obvious that disengaging hands over the ball. Two
+alternatives were measured against it on the three human proxies:
+
+| deadlock response | vs backing off |
+|---|---|
+| keep pushing and twist the ball out | -1.98 +- 0.78 (worse) |
+| never disengage | -3.00 +- 0.66 (worse) |
+
+The frames were a real sequence but not a representative one. Kept.
+
+**Not avoiding an opponent already in contact.** Human proxies +0.38 +- 0.55,
+runner -1.25 +- 0.46. Rejected.
+
+**Lesson for the method.** Looking at frames is how hypotheses are found, not
+how they are accepted. Both of these would have shipped on the strength of
+the pictures.
+
 ## Open questions
 - The human proxies are the weakest link. The real opponent drives a FlySky RC
   transmitter; `human_rc` models continuous analog steering from a 0.2 s-old

@@ -6,7 +6,9 @@ goal difference per match (ours minus theirs) with one standard error unless
 stated. "Within noise" means the difference is under two standard errors.
 
 Raw per-match data for every labelled run is in `scratch/evals/<label>.json`,
-and the exact code each run used is frozen in `scratch/evals/trees/<label>/`.
+and the exact code each run used is frozen in
+`scratch/evals/trees/<label>-<timestamp>/` (runs 1-8 predate the timestamp and
+used `trees/<label>/`).
 
 ---
 
@@ -142,9 +144,12 @@ position (path round the ball plus on-the-spot turns, identical robots, current
 state only), and stop steering round the opponent's body when it is within
 0.45 m of the ball.
 
-**Decision rule, fixed before the extra matches were run.** The primary metric
-is the combined goal difference over the three human proxies, because the real
-opponent is a person. The bots only check for regressions.
+**Decision rule.** The primary metric is the combined goal difference over the
+three human proxies, because the real opponent is a person; the bots only check
+for regressions. Stated honestly: this rule was set AFTER seeing the first 24
+matches per opponent (which pointed the same way but sat on the edge of the
+noise) and BEFORE the 24 extra matches per human proxy were run. From here on
+it is fixed in `tools/evaluate.py` and applies to every comparison.
 
 | opponent | change vs previous version | verdict |
 |---|---|---|

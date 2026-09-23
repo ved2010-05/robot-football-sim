@@ -440,6 +440,9 @@ USE_REACHABILITY = True      # provable shot / block geometry
 # the real response is traction-limited, voltage-dependent and nonlinear, and
 # a first-order lag is what you would actually fit to it. The mismatch is
 # part of the point.
+LATENCY_ID_MODEL_TAU = False # identify delay against the command passed
+                             # through the drivetrain's own lag, so spin-up
+                             # time is not mistaken for delay
 DRIVETRAIN_TAU_S = 0.18      # velocity response time constant
 BALL_Q_VEL = 0.5             # ball filter velocity random walk, m/s per
                              # root-second. High = reacts fast to a strike and

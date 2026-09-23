@@ -126,8 +126,24 @@ class LatencyIdentifier:
         self._candidates = [i * 0.004 for i in range(0, 26)]  # 0..100 ms
         self.confidence = 0.0
         self._last_run_t = -1e9
+        self._lagged = 0.0
 
     def push_command(self, t: float, v: float) -> None:
+        # Optionally store the command AS THE DRIVETRAIN WOULD FOLLOW IT: a
+        # first-order lag with the known time constant. Raw commands against
+        # observed speed recover delay PLUS spin-up time -- measured 67-93 ms
+        # against a true 26 ms -- because a motor takes ~tau to reach a new
+        # speed, and the best-matching shift absorbs that. Spin-up is physics
+        # the forward model should handle, not delay.
+        if config.LATENCY_ID_MODEL_TAU:
+            if self.commands:
+                t0, _ = self.commands[-1]
+                dt = max(t - t0, 0.0)
+                k = 1.0 - math.exp(-dt / max(config.DRIVETRAIN_TAU_S, 1e-3))
+                self._lagged += (v - self._lagged) * k
+            else:
+                self._lagged = v
+            v = self._lagged
         self.commands.append((t, v))
         self._trim(self.commands, t)
 

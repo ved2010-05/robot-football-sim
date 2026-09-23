@@ -24,7 +24,7 @@ from ai.strategy_fsm import FSM
 from ai.tactics import (StuckMonitor, CaptureMonitor, CarryController,
                         DeadlockBreaker, OrientToBall, StrikeSequence,
                         DirectStriker, possessor, effective_aim, ball_against_wall, ShadowDefender,
-                        on_chamfer)
+                        on_chamfer, strike_distance)
 from sim.io_interface import Sensors, Actuators
 from sim.geometry import dist, wrap_angle
 
@@ -208,6 +208,14 @@ class Agent:
         opp_b = belief.robots[self.opp_index]
         my_d = dist(me.pos, belief.ball_pos)
         opp_d = dist(opp_b.pos, belief.ball_pos) if opp_b.valid else 9e9
+        if config.CLAIM_MODE == "eta" and opp_b.valid:
+            # Who can STRIKE it first, not who is nearest. See
+            # tactics.strike_distance.
+            own_goal = (-self.attack_dir * config.HALF_LENGTH_M, 0.0)
+            my_d = strike_distance(me.pos, me.theta, belief.ball_pos,
+                                   self._attack_aim(belief))
+            opp_d = strike_distance(opp_b.pos, opp_b.theta, belief.ball_pos,
+                                    own_goal)
         deep = ((belief.ball_pos[0] * self.attack_dir)
                 < -config.HALF_LENGTH_M * config.STRIKE_THREATENED_FRAC)
         margin = (config.STRIKE_DEEP_MARGIN_M if deep

@@ -884,7 +884,12 @@ SWEEP_REQUIRE_LANE = True     # hold the along-wall heading only from the
                               # sweep lane upstream of the ball; elsewhere,
                               # drive to the approach point first
 SWEEP_LANE_M = 0.18           # lateral offset from the ball's lane allowed
-SWEEP_LANE_RANGE_M = 0.60     # ...and how far upstream the lane starts
+SWEEP_RUNWAY_M = 0.0          # extra run-up before the ball. Tried at 0.12
+                              # and 0.25 to give the robot room to close in;
+                              # 40 random wall balls: 17 and 10 solved against
+                              # 18 with none. Longer approaches clamp into
+                              # corners. Left at zero.
+SWEEP_LANE_RANGE_M = 0.80     # ...and how far upstream the lane starts
 SWEEP_WATCHDOG = True         # ban a sweep direction that is not moving the
                               # ball, so the other way out gets tried
 SWEEP_STALL_S = 1.5           # ...no ball movement for this long = dead end
@@ -901,9 +906,21 @@ SWEEP_CLOSE_GAIN = 2.5        # rad of tilt per metre of lateral error
 SWEEP_CLOSE_MAX_DEG = 25.0    # never angle into the wall steeper than this
 AVOID_OPPONENT_BODY = True    # route round the other robot, not into it
 AVOID_CLEARANCE_M = 0.42      # two half-widths plus margin
+AVOID_SKIP_CONTESTED_M = 0.45 # don't avoid the opponent when it is within this
+                              # of the ball (0 = always avoid): beside the ball
+                              # it is a contest, not an obstacle
 STILL_RADIUS_M = 0.04        # "not moved": stayed within this of where it was
 STILL_CLAIM_S = 2.0           # a ball that has not moved for this long is
                               # ours to take, whoever is nearer. 0 = off.
+CLAIM_MODE = "eta"            # "dist": nearer to the ball claims it.
+                              # "eta": nearer to STRIKING it claims it -- path
+                              # round the ball plus turning, both robots.
+                              # With AVOID_SKIP_CONTESTED_M = 0.45, against the
+                              # "dist" version, 48 matches per human proxy:
+                              #   human +0.02, human_fast +0.56, human_rc +0.44
+                              #   three human proxies combined +1.02 +- 0.42
+                              #   runner bot -1.50 +- 0.66 (a real regression,
+                              #   accepted: the opponent is a person)
 CLAIM_HYSTERESIS_M = 0.20     # once going for the ball, keep going unless the
                               # opponent is nearer by this much more
 DANGER_RADIUS_M = 0.75        # ball this close to our goal centre = danger
@@ -994,7 +1011,7 @@ STUCK_DETECT_YAW = True            # also count a turn on the spot that is
                                    # a wall stop a spin dead, and a spin asks
                                    # for no forward speed, so the travel test
                                    # below never saw it.
-STUCK_MIN_TURN_DEG = 8.0           # turned less than this over the window,
+STUCK_MIN_TURN_DEG = 30.0          # turned less than this over the window,
                                    # while commanding over half yaw, = jammed
 STUCK_ESCAPE_AWAY_FROM_WALL = True # escape toward open floor: forwards if the
                                    # tail is the end against the wall

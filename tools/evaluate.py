@@ -32,7 +32,10 @@ import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
 
-OPPONENTS = ("simple", "runner", "human", "human_fast")
+OPPONENTS = ("simple", "runner", "human", "human_fast", "human_rc")
+# The primary metric. The real opponent is a person on a FlySky transmitter;
+# the bots only check for regressions.
+HUMANS = ("human", "human_fast", "human_rc")
 OUT_DIR = os.path.join("scratch", "evals")
 
 
@@ -45,9 +48,12 @@ def _snapshot(label):
     label, silently. Freezing a copy at launch makes that impossible.
     """
     import shutil
-    dst = os.path.join(OUT_DIR, "trees", label)
-    if os.path.exists(dst):
-        shutil.rmtree(dst)
+    import time
+    # One folder per run, never deleted: every result stays traceable to the
+    # exact code that produced it. (Deleting the old folder also failed under
+    # OneDrive's file locks, which killed a run silently.)
+    dst = os.path.join(OUT_DIR, "trees",
+                       f"{label}-{time.strftime('%Y%m%d-%H%M%S')}")
     ign = shutil.ignore_patterns("__pycache__", "*.pyc")
     for d in ("ai", "sim", "game", "tools"):
         shutil.copytree(d, os.path.join(dst, d), ignore=ign)
@@ -128,6 +134,7 @@ def report(labels):
         print(f"\n== {lb}  minus  {base}   (goal diff per match; paired on "
               f"shared seeds where possible)")
         tot, tot_var = 0.0, 0.0
+        hum, hum_var = 0.0, 0.0
         for opp in OPPONENTS:
             a = datas[base]["rows"].get(opp, {})
             b = datas[lb]["rows"].get(opp, {})
@@ -148,10 +155,18 @@ def report(labels):
             verdict = ("better" if m > 2 * se else "WORSE" if m < -2 * se
                        else "no detectable effect")
             print(f"  {opp:<11} n={n:<4}{m:>+7.2f} +- {se:.2f}   {verdict}")
+            if opp in HUMANS:
+                hum += m
+                hum_var += se * se
         tse = math.sqrt(tot_var)
         verdict = ("better" if tot > 2 * tse else "WORSE" if tot < -2 * tse
                    else "no detectable effect")
         print(f"  {'SUM':<11}       {tot:>+7.2f} +- {tse:.2f}   {verdict}")
+        hse = math.sqrt(hum_var)
+        verdict = ("better" if hum > 2 * hse else "WORSE" if hum < -2 * hse
+                   else "no detectable effect")
+        print(f"  {'HUMANS':<11}       {hum:>+7.2f} +- {hse:.2f}   {verdict}"
+              f"   <- primary: the real opponent is a person")
 
 
 def main() -> int:

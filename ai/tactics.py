@@ -160,6 +160,55 @@ def route_around(me_pos, ball, target, clearance: float | None = None):
     return target
 
 
+def strike_distance(pos, theta, ball, aim) -> float:
+    """How far away a robot is from STRIKING the ball, in metres of driving.
+
+    Straight-line distance to the ball says two robots are level when one is
+    lined up behind it and the other is on the wrong side, facing away. Traced
+    against the faster human proxy, that is how most goals were conceded: the
+    AI claimed a ball it was "as close to", spent 2-3 s turning and routing
+    round it, and the opponent drove straight through it and scored.
+
+    This is the time for an identical robot to reach the point behind the
+    ball on its own shooting line -- going round the ball if it has to, and
+    turning on the spot between legs, as the striker actually drives --
+    expressed back in metres at top speed so every existing margin keeps its
+    meaning. Current state only; nothing about the opponent is learned.
+    """
+    from ai.controller import limits
+    v, w = limits()
+    dx, dy = aim[0] - ball[0], aim[1] - ball[1]
+    n = max(math.hypot(dx, dy), 1e-6)
+    ux, uy = dx / n, dy / n
+    stand = (config.ROBOT_LENGTH_M / 2.0 + config.HORN_LENGTH_M * 0.5
+             + config.BALL_RADIUS_M)
+    strike = reachable_point((ball[0] - ux * stand, ball[1] - uy * stand))
+    via = route_around(pos, ball, strike)
+    pts = [pos, via, strike] if via is not strike else [pos, strike]
+    length, turn, heading = 0.0, 0.0, theta
+    for a, b in zip(pts, pts[1:]):
+        seg = math.hypot(b[0] - a[0], b[1] - a[1])
+        if seg < 1e-6:
+            continue
+        hd = math.atan2(b[1] - a[1], b[0] - a[0])
+        turn += abs(wrap_angle(hd - heading))
+        heading = hd
+        length += seg
+    turn += abs(wrap_angle(math.atan2(uy, ux) - heading))
+    return length + turn * v / max(w, 1e-6)
+
+
+def _contested(ball, opp_pos) -> bool:
+    """The other robot is at the ball: a contest, not an obstacle to avoid.
+
+    Steering round the opponent's body is right on the way somewhere. Beside
+    the ball it steered the AI away from the very contest it had claimed.
+    """
+    return (config.AVOID_SKIP_CONTESTED_M > 0.0
+            and math.hypot(ball[0] - opp_pos[0], ball[1] - opp_pos[1])
+            < config.AVOID_SKIP_CONTESTED_M)
+
+
 def avoid_robot(me_pos, target, opp_pos, clearance: float | None = None):
     """The target, or a via-point round the other robot if it is in the way.
 
@@ -917,8 +966,9 @@ def wall_extraction(ball, attack_dir: float, me_pos=None,
                 ((-sx * k, sy * k), 0.6 if attacking_end else 0.0)]
         best, best_cost = None, 1e9
         for (tx, ty), pen in opts:
-            approach = reachable_point((ball[0] - tx * stand + n_in[0] * off,
-                                        ball[1] - ty * stand + n_in[1] * off))
+            run = stand + config.SWEEP_RUNWAY_M
+            approach = reachable_point((ball[0] - tx * run + n_in[0] * off,
+                                        ball[1] - ty * run + n_in[1] * off))
             aim = (ball[0] + tx * 1.2 + n_in[0] * 0.05,
                    ball[1] + ty * 1.2 + n_in[1] * 0.05)
             cost = pen + (100.0 if (tx, ty) in banned else 0.0)
@@ -977,8 +1027,12 @@ def wall_extraction(ball, attack_dir: float, me_pos=None,
         options.append((-tx, -ty, pen + config.SWEEP_REVERSE_PENALTY))
 
     def build(tx, ty):
-        approach = reachable_point((ball[0] - tx * stand + off_x,
-                                    ball[1] - ty * stand + off_y))
+        # Start a run-up short of the ball. Closing in on the wall takes
+        # travel, and from a start point one stand-off behind the ball the
+        # robot was still 0.16 m out when it drew level, and drove past.
+        run = stand + config.SWEEP_RUNWAY_M
+        approach = reachable_point((ball[0] - tx * run + off_x,
+                                    ball[1] - ty * run + off_y))
         aim = reachable_point((ball[0] + tx * 1.2 + off_x * 0.5,
                                ball[1] + ty * 1.2 + off_y * 0.5))
         return aim, approach
@@ -1289,7 +1343,8 @@ class DirectStriker:
                 if via is not strike:
                     target = via
                     phase = "around"
-            if config.AVOID_OPPONENT_BODY and opp_pos is not None:
+            if (config.AVOID_OPPONENT_BODY and opp_pos is not None
+                    and not _contested(bp, opp_pos)):
                 via = avoid_robot(me.pos, target, opp_pos)
                 if via is not target:
                     target = via

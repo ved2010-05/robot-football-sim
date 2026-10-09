@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="304mm" height="254mm" viewBox="0 0 304 254">
+<g id="cut" stroke="#FF0000" stroke-width="0.1" fill="none">
+<rect x="2" y="2" width="300" height="250" rx="10" ry="10"/>
+<rect x="22" y="201" width="30" height="6"/>
+<rect x="137" y="201" width="30" height="6"/>
+<rect x="252" y="201" width="30" height="6"/>
+<circle cx="92" cy="204" r="1.7"/>
+<circle cx="212" cy="204" r="1.7"/>
+<rect x="22" y="47" width="30" height="6"/>
+<rect x="137" y="47" width="30" height="6"/>
+<rect x="252" y="47" width="30" height="6"/>
+<circle cx="92" cy="50" r="1.7"/>
+<circle cx="212" cy="50" r="1.7"/>
+<circle cx="27" cy="127" r="11"/>
+</g>
+<g id="engrave" stroke="#0000FF" stroke-width="0.1" fill="none">
+<circle cx="152" cy="127" r="55"/>
+<circle cx="257" cy="92" r="27.5"/>
+<circle cx="257" cy="162" r="27.5"/>
+<path d="M 132 222 L 172 222 M 164 217 L 172 222 L 164 227"/>
+</g>
+</svg>

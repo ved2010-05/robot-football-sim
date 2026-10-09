@@ -27,7 +27,8 @@ before paying. Order all four motors from ONE batch so the robots match.
   human robot; that robot's ESP32 reads it over iBUS, drives its motors, and
   also forwards the stick values to the base station. That is what gives the
   AI the "intent" channel. Without the forwarding, intent must be off.
-- 6 mm birch ply, laser-cut: two decks per robot
+- 6 mm birch ply, laser-cut: bottom deck, two side plates and a lid per robot.
+  SVGs and assembly notes in [hardware/laser](../hardware/laser/README.md)
 - X1C prints: wheels (PETG hub, TPU tyre), belt pulleys, motor clamps, horns,
   bumper, camera mount
 - GT2 belt and bearings from lab stock, or printed gear pair if none

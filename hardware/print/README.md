@@ -66,10 +66,10 @@ Looking along an axle from the centre of the robot outwards:
   plate and wheels. Put `idler_roller` on an M3 bolt through the middle slot,
   outside the plate, and slide it down until the belt is just taut.
 - **Horns**: each clamps the deck's front edge (top foot and bottom lip) and is
-  held by one M3 screw up through the lip, the deck hole 60 from the centre line
+  held by one M3 x 25 screw up through the lip, the deck hole 60 from the centre line
   and the foot, with the nut in the foot's pocket. The bars' inner faces are
   100 apart and stick out 90.
-- **Rear bumper**: clamps the rear edge the same way with five screws.
+- **Rear bumper**: clamps the rear edge the same way with five M3 x 25 screws.
 
 ## What this changes in the simulator
 
@@ -88,4 +88,5 @@ out too short (see above).
 ## Other hardware for both robots
 
 8 x 626ZZ bearings, 4 x 60 mm of 6 mm steel rod, 4 x 6 mm shaft collars, about
-40 M3 x 16 screws and nuts.
+70 M3 x 16 screws and nuts (plates, mounts, adapters, idlers, lid), and 14
+M3 x 25 with nuts (horns and bumpers: 20 mm of lip, deck and foot).

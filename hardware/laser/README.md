@@ -53,7 +53,8 @@ python hardware/laser/make_laser_parts.py
   belt's top run.
 - **Bottom deck**: the hole grids either side of the battery are for the two
   BTS7960 boards, the ESP32 and the buck converter (screws, standoffs or zip
-  ties). The four slots are for a Velcro strap around the 3S pack. The rows of
+  ties). The two slots at the ends take a Velcro strap running lengthwise over
+  the 3S pack, leaving room beside it for the motor drivers. The rows of
   holes along the front and rear edges are for the printed horns and bumper.
 - **Lid**: painted matte black. Stick the white discs from
   `markers_white.svg` inside the scored circles. The arrow points forward

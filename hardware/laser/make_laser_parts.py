@@ -172,11 +172,11 @@ def bottom_deck():
         for x in range(-60, 61, 10):
             for y in range(35, 66, 10):
                 cut.append(circle(X(x), Y(sy * y), M3_D))
-    # battery strap slots (20 mm Velcro strap around a 3S pack lying along x)
-    for x in (-30, 30):
-        for sy in (-1, 1):
-            ya, yb = sorted((Y(sy * 23), Y(sy * 27)))
-            cut.append(rrect(X(x - 11), ya, X(x + 11), yb, 1.5))
+    # battery strap slots just past each end of a 3S pack lying along x (up to
+    # 105 long), so a 20 mm Velcro strap runs lengthwise over it and leaves the
+    # 57 mm either side of the battery clear for the 50 x 50 motor drivers
+    for x in (-58, 58):
+        cut.append(rrect(X(x - 2), Y(11), X(x + 2), Y(-11), 1.5))
     write("bottom_deck.svg", W, H, cut)
 
 

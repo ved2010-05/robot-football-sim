@@ -11,7 +11,15 @@
 <rect x="252" y="47" width="30" height="6"/>
 <circle cx="92" cy="50" r="1.7"/>
 <circle cx="212" cy="50" r="1.7"/>
-<circle cx="27" cy="127" r="11"/>
+<rect x="32" y="155" width="6" height="24"/>
+<rect x="32" y="75" width="6" height="24"/>
+<circle cx="35" cy="193" r="1.7"/>
+<circle cx="35" cy="61" r="1.7"/>
+<rect x="266" y="155" width="6" height="24"/>
+<rect x="266" y="75" width="6" height="24"/>
+<circle cx="269" cy="193" r="1.7"/>
+<circle cx="269" cy="61" r="1.7"/>
+<circle cx="62" cy="127" r="11"/>
 </g>
 <g id="engrave" stroke="#0000FF" stroke-width="0.1" fill="none">
 <circle cx="152" cy="127" r="55"/>

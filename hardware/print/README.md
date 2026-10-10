@@ -78,6 +78,7 @@ When the robots are built, update `config.py`:
 - `WHEELBASE_M` 0.200 -> **0.180** (set by the 400 mm belt)
 - `TRACK_WIDTH_M` 0.200 -> **0.204** (wheel centres 102 from the centre line)
 - `HORN_WIDTH_M` 0.010 -> **0.015** (the inner gap stays 100)
+- `MARKER_HEIGHT_M` 0.150 -> **0.110** (the lid top is now 110 above the floor)
 
 ## Not used in this design
 
@@ -88,5 +89,5 @@ out too short (see above).
 ## Other hardware for both robots
 
 8 x 626ZZ bearings, 4 x 60 mm of 6 mm steel rod, 4 x 6 mm shaft collars, about
-70 M3 x 16 screws and nuts (plates, mounts, adapters, idlers, lid), and 14
+90 M3 x 16 screws and nuts (walls, mounts, adapters, idlers, lid), and 14
 M3 x 25 with nuts (horns and bumpers: 20 mm of lip, deck and foot).

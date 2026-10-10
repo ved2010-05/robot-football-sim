@@ -11,6 +11,14 @@
 <rect x="252" y="8" width="30" height="6"/>
 <circle cx="92" cy="11" r="1.7"/>
 <circle cx="212" cy="11" r="1.7"/>
+<rect x="32" y="116" width="6" height="24"/>
+<rect x="32" y="36" width="6" height="24"/>
+<circle cx="35" cy="154" r="1.7"/>
+<circle cx="35" cy="22" r="1.7"/>
+<rect x="266" y="116" width="6" height="24"/>
+<rect x="266" y="36" width="6" height="24"/>
+<circle cx="269" cy="154" r="1.7"/>
+<circle cx="269" cy="22" r="1.7"/>
 <circle cx="12" cy="163" r="1.7"/>
 <circle cx="12" cy="148" r="1.7"/>
 <circle cx="12" cy="133" r="1.7"/>

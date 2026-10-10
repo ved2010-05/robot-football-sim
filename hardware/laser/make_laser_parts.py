@@ -25,7 +25,8 @@ M3_D = 3.4           # M3 clearance hole
 # ---------------------------------------------------------------- robot
 BODY_L = 300.0       # config.ROBOT_LENGTH_M
 BODY_W = 250.0       # config.ROBOT_WIDTH_M (the lid covers the wheels)
-HEIGHT = 150.0       # top of lid = config.MARKER_HEIGHT_M
+HEIGHT = 110.0       # top of lid = config.MARKER_HEIGHT_M. Lowest that clears
+                     # the 100 mm wheels under the lid with 4 mm to spare
 CLEARANCE = 15.0     # floor to underside of the bottom deck (ball is 43 mm)
 WHEEL_R = 50.0       # config.WHEEL_RADIUS_M
 AXLE_X = 90.0        # axles at +-90: 180 mm apart, set by the 400 mm GT2 belt
@@ -48,6 +49,15 @@ TSLOT_X = (-60.0, 60.0)
 TSLOT_DEPTH = 14.0   # M3 x 16 screw: 6 through the deck + 10 into the plate
 NUT_W, NUT_T, NUT_Z = 5.7, 2.6, 6.0           # M3 nut pocket
 
+# front and rear panels close the box between the side plates
+END_X = 114.0        # inner face (outer face at 120): clears the 46 mm motor
+                     # adapter and axle mount (to 113) and the horn and bumper
+                     # feet (from 120)
+END_TAB_Y = (-40.0, 40.0)
+END_TAB_W = 24.0
+END_SIDE_TAB = (31.0, 51.0)   # side tabs into the plates, height above plate bottom
+END_TSLOT_U = (-66.0, 66.0)   # screws kept clear of the heading dots on the lid
+
 # markers (config.MARKER_*)
 MARK_CENTRE_D = 110.0
 MARK_DOT_D = 55.0
@@ -55,7 +65,8 @@ MARK_DOT_X = 105.0
 MARK_B_DOT_Y = 35.0  # robot B: two dots side by side, 15 mm apart
 
 ESTOP_D = 22.0       # standard 22 mm panel hole
-ESTOP_X = -125.0
+ESTOP_X = -90.0      # inside the box, over the rear motor: body may hang
+                     # at most 38 mm below the lid
 
 MARGIN = 2.0
 CUT = 'stroke="#FF0000" stroke-width="0.1" fill="none"'
@@ -101,31 +112,46 @@ def write(name, w, h, cut, eng=()):
     print("wrote", name, f"({f(w)} x {f(h)} mm)")
 
 
-# ---------------------------------------------------------------- side plate
-def side_plate():
-    """Vertical plate along the robot's length. x = along robot, z = up."""
-    h, d = PLATE_H, TSLOT_DEPTH
-    pts = [(-PLATE_HALF_L, 0.0)]
-    feats = sorted([(c, "tab") for c in TAB_X] + [(c, "t") for c in TSLOT_X])
+# ---------------------------------------------------------------- outlines
+def walled_outline(half_l, h, tab_x, tab_w, tslot_x, side_tab=None):
+    """Outline of an upright panel: tabs and M3 T-slots on its bottom and top
+    edges, optional tabs on both ends (z0, z1) that go into the side plates."""
+    d = TSLOT_DEPTH
+    pts = [(-half_l, 0.0)]
+    feats = sorted([(c, "tab") for c in tab_x] + [(c, "t") for c in tslot_x])
     for c, kind in feats:                      # bottom edge, left to right
         if kind == "tab":
-            pts += [(c - TAB_W / 2, 0), (c - TAB_W / 2, -PLY), (c + TAB_W / 2, -PLY), (c + TAB_W / 2, 0)]
+            pts += [(c - tab_w / 2, 0), (c - tab_w / 2, -PLY), (c + tab_w / 2, -PLY), (c + tab_w / 2, 0)]
         else:
             s, n = 1.6, NUT_W / 2
             pts += [(c - s, 0), (c - s, NUT_Z), (c - n, NUT_Z), (c - n, NUT_Z + NUT_T), (c - s, NUT_Z + NUT_T),
                     (c - s, d), (c + s, d), (c + s, NUT_Z + NUT_T), (c + n, NUT_Z + NUT_T), (c + n, NUT_Z),
                     (c + s, NUT_Z), (c + s, 0)]
-    pts += [(PLATE_HALF_L, 0.0), (PLATE_HALF_L, h)]
+    pts += [(half_l, 0.0)]
+    if side_tab:
+        z0, z1 = side_tab
+        pts += [(half_l, z0), (half_l + PLY, z0), (half_l + PLY, z1), (half_l, z1)]
+    pts += [(half_l, h)]
     for c, kind in reversed(feats):            # top edge, right to left
         if kind == "tab":
-            pts += [(c + TAB_W / 2, h), (c + TAB_W / 2, h + PLY), (c - TAB_W / 2, h + PLY), (c - TAB_W / 2, h)]
+            pts += [(c + tab_w / 2, h), (c + tab_w / 2, h + PLY), (c - tab_w / 2, h + PLY), (c - tab_w / 2, h)]
         else:
             s, n = 1.6, NUT_W / 2
             pts += [(c + s, h), (c + s, h - NUT_Z), (c + n, h - NUT_Z), (c + n, h - NUT_Z - NUT_T),
                     (c + s, h - NUT_Z - NUT_T), (c + s, h - d), (c - s, h - d), (c - s, h - NUT_Z - NUT_T),
                     (c - n, h - NUT_Z - NUT_T), (c - n, h - NUT_Z), (c - s, h - NUT_Z), (c - s, h)]
-    pts += [(-PLATE_HALF_L, h)]
+    pts += [(-half_l, h)]
+    if side_tab:
+        z0, z1 = side_tab
+        pts += [(-half_l, z1), (-half_l - PLY, z1), (-half_l - PLY, z0), (-half_l, z0)]
+    return pts
 
+
+# ---------------------------------------------------------------- side plate
+def side_plate():
+    """Vertical plate along the robot's length. x = along robot, z = up."""
+    h = PLATE_H
+    pts = walled_outline(PLATE_HALF_L, h, TAB_X, TAB_W, TSLOT_X)
     W = 2 * PLATE_HALF_L + 2 * MARGIN
     H = h + 2 * PLY + 2 * MARGIN
     X = lambda x: x + PLATE_HALF_L + MARGIN
@@ -138,9 +164,30 @@ def side_plate():
                 cut.append(circle(X(ax + dx), Y(AXLE_Z + dz), M3_D))
     # belt idler: an M3 bolt with a small bearing pressing down on the top run
     cut.append(slot(X(0), Y(37), X(0), Y(50), M3_D))
-    # wiring / lightening window
-    cut.append(rrect(X(-45), Y(105), X(45), Y(62), 8))
+    # wiring window, between the idler slot and the top T-slots
+    cut.append(rrect(X(-40), Y(71), X(40), Y(56), 5))
+    # slots for the front and rear panels' side tabs
+    for sx in (-1, 1):
+        x0 = sx * END_X if sx > 0 else -END_X - PLY
+        cut.append(f'<rect x="{f(X(x0) - (SLOT_W - PLY) / 2)}" y="{f(Y(END_SIDE_TAB[1]))}" '
+                   f'width="{f(SLOT_W)}" height="{f(END_SIDE_TAB[1] - END_SIDE_TAB[0])}"/>')
     write("side_plate.svg", W, H, cut)
+
+
+def end_panel(which):
+    """Front or rear wall, standing across the robot between the side plates.
+    u = across the robot (robot y), z = up."""
+    h = PLATE_H
+    pts = walled_outline(PLATE_Y, h, END_TAB_Y, END_TAB_W, END_TSLOT_U, END_SIDE_TAB)
+    W = 2 * (PLATE_Y + PLY) + 2 * MARGIN
+    H = h + 2 * PLY + 2 * MARGIN
+    X = lambda u: u + PLATE_Y + PLY + MARGIN
+    Y = lambda z: h + PLY + MARGIN - z
+    cut = [f'<path d="{poly_path([(X(u), Y(z)) for u, z in pts])}"/>']
+    if which == "rear":
+        # access for the battery's charge lead and the ESP32's USB cable
+        cut.append(rrect(X(-30), Y(64), X(30), Y(40), 4))
+    write(f"end_panel_{which}.svg", W, H, cut)
 
 
 # ---------------------------------------------------------------- decks
@@ -153,6 +200,13 @@ def deck_common(half_w, X, Y):
                        f'width="{f(TAB_W)}" height="{f(SLOT_W)}"/>')
         for c in TSLOT_X:
             cut.append(circle(X(c), Y(sy * (PLATE_Y + PLY / 2)), M3_D))
+    for sx in (-1, 1):
+        x0 = END_X if sx > 0 else -END_X - PLY
+        for c in END_TAB_Y:
+            ya, yb = sorted((Y(c - END_TAB_W / 2), Y(c + END_TAB_W / 2)))
+            cut.append(f'<rect x="{f(X(x0) - (SLOT_W - PLY) / 2)}" y="{f(ya)}" width="{f(SLOT_W)}" height="{f(yb - ya)}"/>')
+        for c in END_TSLOT_U:
+            cut.append(circle(X(sx * (END_X + PLY / 2)), Y(c), M3_D))
     return cut
 
 
@@ -229,6 +283,8 @@ def test_coupon():
 
 if __name__ == "__main__":
     side_plate()
+    end_panel("front")
+    end_panel("rear")
     bottom_deck()
     lid("A")
     lid("B")

@@ -44,20 +44,13 @@ python hardware/laser/make_laser_parts.py
   lid sits on their top tabs. Each joint is held by an M3 x 16 screw through
   the deck into the T-slot in the plate edge, with an M3 nut dropped into the
   slot's pocket (4 screws per deck, 4 per lid).
-- **Axles** sit in the two 19 mm holes of each plate, 180 apart and 50 above
-  the floor, with a 626ZZ bearing pressed into each hole. The wheels are
-  outside the plates, centred 100 from the robot's centre line.
-- **Motors**: one per side. On the left plate the motor drives the front
-  wheel, on the right plate the rear wheel, so the two motor bodies (which
-  point inwards) pass each other. Each motor bolts to a printed bracket on the
-  four M3 holes around its axle hole. The bracket holds the motor face about
-  18 mm in from the plate, and the 20-tooth pulley sits in that gap.
-- **Unpowered wheels**: a printed bearing block on the same four holes carries
-  a second 626ZZ about 20 in from the plate, so the axle is held at two
-  points. The pulley sits between the plate and the block.
+- **Axles and motors**: the 19 mm holes and the four M3 holes around each
+  take the printed motor adapter (powered wheel) or axle mount (unpowered
+  wheel). Pulleys, belt and wheels are all outside the plate, so nothing but
+  the motor sits inside it. See [../print/README.md](../print/README.md).
 - **Belt idler**: the short slot in the middle of each plate takes an M3 bolt
-  with a small bearing (e.g. 623ZZ) that presses down on the belt's top run.
-  Slide it down until the belt is just taut.
+  with the printed idler roller, outside the plate, pressing down on the
+  belt's top run.
 - **Bottom deck**: the hole grids either side of the battery are for the two
   BTS7960 boards, the ESP32 and the buck converter (screws, standoffs or zip
   ties). The four slots are for a Velcro strap around the 3S pack. The rows of
@@ -75,11 +68,11 @@ All of them are constants at the top of `make_laser_parts.py`.
 | Size | Value | Comes from |
 |---|---|---|
 | Body | 300 x 250 x 150 tall | `config.ROBOT_LENGTH_M`, `ROBOT_WIDTH_M`, `MARKER_HEIGHT_M` |
-| Wheels | 100 diameter, centred 100 from the centre line | `WHEEL_RADIUS_M`, `TRACK_WIDTH_M` |
+| Wheels | 100 diameter, centred 102 from the centre line | `WHEEL_RADIUS_M`, `TRACK_WIDTH_M` |
 | Axle spacing | 180 | 400 mm GT2 belt on 20-tooth pulleys |
 | Ground clearance under the deck | 15 | less than the 43 mm ball, so it can't get under |
-| Room for each motor | about 130 from its face (with the printed bracket) to the opposite plate | Measure the IG32 with its encoder before cutting |
-| Bearings | 626ZZ, 6 x 19 x 6 | 6 mm shafts |
+| Room for each motor | about 134 from its face to the opposite axle mount | Measure the IG32 with its encoder |
+| Bearings | 626ZZ, 6 x 19 x 6 | in the unpowered wheels |
 
 Two things to check against the simulator:
 
@@ -91,4 +84,5 @@ Two things to check against the simulator:
 
 ## Printed, not laser-cut
 
-Wheels (hub + TPU tyre), motor brackets, bearing blocks, horns, bumper.
+Wheels with built-in pulleys, TPU tyres, motor adapters, axle mounts, idler
+rollers, horns and rear bumper: [../print](../print/README.md).
